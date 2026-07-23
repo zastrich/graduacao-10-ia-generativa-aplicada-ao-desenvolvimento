@@ -1,8 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  Copiloto Corporativo com IA - Infraestrutura Serverless
-  Assistente corporativo inteligente usando AWS Bedrock (Gemma 3 4b-it)
+Description: |
+  Copiloto Corporativo com IA - Infraestrutura Serverless Assistente corporativo inteligente usando AWS Bedrock (Gemma 3 4b-it)
 
 Globals:
   Function:
@@ -45,9 +44,9 @@ Resources:
       Name: !Sub copiloto-api-${Stage}
       StageName: !Ref Stage
       Cors:
-        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'*'"
+        AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
+        AllowHeaders: '''Content-Type,Authorization'''
+        AllowOrigin: '''*'''
 
   # ============================================================
   # DynamoDB Tables
@@ -148,9 +147,15 @@ Resources:
       BucketName: !Sub conhecimento-ia-generativa-${Stage}
       CorsConfiguration:
         CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, PUT, POST, DELETE]
-            AllowedOrigins: ['*']
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedOrigins:
+              - '*'
             MaxAge: 3600
 
   FrontendBucket:
@@ -176,7 +181,7 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: s3:GetObject
-            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Resource: !Sub ${FrontendBucket.Arn}/*
 
   # ============================================================
   # Lambda Functions
@@ -401,7 +406,7 @@ Resources:
 Outputs:
   ApiUrl:
     Description: URL da API Gateway
-    Value: !Sub 'https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/'
+    Value: !Sub https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/
 
   FrontendUrl:
     Description: URL do Frontend (S3 Website)

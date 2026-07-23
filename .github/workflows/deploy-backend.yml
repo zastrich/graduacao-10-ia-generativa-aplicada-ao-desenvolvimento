@@ -1,0 +1,49 @@
+name: Deploy Backend Lambdas
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'src/backend/package-lock.json'
+
+      - name: Install Dependencies
+        run: |
+          cd src/backend
+          npm ci
+
+      - name: Run Unit Tests
+        run: |
+          cd src/backend
+          npm test
+
+      - name: Build TypeScript
+        run: |
+          cd src/backend
+          npm run build
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Package & Deploy Lambdas
+        run: |
+          cd src/infrastructure
+          sam build
+          sam deploy --no-confirm-changeset --stack-name copiloto-corporativo-stack
