@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Backend serverless do Copiloto Corporativo com IA",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
@@ -27,7 +30,7 @@
     "@types/aws-lambda": "^8.10.140",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.6",
-    "@types/node": "^20.14.0",
+    "@types/node": "^22.0.0",
     "@types/pdf-parse": "^1.1.4",
     "@types/uuid": "^10.0.0",
     "jest": "^29.7.0",

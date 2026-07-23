@@ -5,7 +5,7 @@ Description: |
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Timeout: 30
     MemorySize: 256
     Environment:
@@ -53,9 +53,14 @@ Resources:
   # ============================================================
   KnowledgeBasesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub copiloto-knowledge-bases-${Stage}
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -74,9 +79,14 @@ Resources:
 
   ConversationsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub copiloto-conversations-${Stage}
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -103,9 +113,14 @@ Resources:
 
   MessagesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub copiloto-messages-${Stage}
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
       AttributeDefinitions:
         - AttributeName: conversationId
           AttributeType: S
@@ -119,9 +134,14 @@ Resources:
 
   UsersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub copiloto-users-${Stage}
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -141,10 +161,72 @@ Resources:
   # ============================================================
   # S3 Buckets
   # ============================================================
+
+  # Bucket de logs — destino centralizado para access logs do KnowledgeBucket e FrontendBucket
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub copiloto-logs-${Stage}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      # Logs do próprio bucket de logs são escritos em si mesmo (self-logging)
+      LoggingConfiguration:
+        LogFilePrefix: logs-bucket/
+
+  LogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyNonSSLRequests
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt LogsBucket.Arn
+              - !Sub ${LogsBucket.Arn}/*
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
   KnowledgeBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub conhecimento-ia-generativa-${Stage}
+      # Bucket privado — acesso exclusivo pelas Lambdas via IAM (S3CrudPolicy / S3ReadPolicy)
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+            BucketKeyEnabled: true
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogsBucket
+        LogFilePrefix: knowledge-bucket/
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders:
@@ -160,28 +242,118 @@ Resources:
 
   FrontendBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub copiloto-frontend-${Stage}
-      WebsiteConfiguration:
-        IndexDocument: index.html
-        ErrorDocument: index.html
+      # Bucket privado — conteúdo servido exclusivamente via CloudFront (OAC)
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogsBucket
+        LogFilePrefix: frontend-bucket/
 
+  # Origin Access Control — permite ao CloudFront assinar requests ao S3 sem tornar o bucket público
+  FrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub copiloto-frontend-oac-${Stage}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # CloudFront Distribution — CDN + HTTPS + SPA fallback para index.html
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub Copiloto Frontend - ${Stage}
+        DefaultRootObject: index.html
+        Origins:
+          - Id: FrontendS3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt FrontendOAC.Id
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized (gerenciada pela AWS)
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+        # Redireciona erros 403/404 para index.html — necessário para SPA com client-side routing
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100 # Apenas regiões NA + Europa (menor custo)
+
+  # Bucket Policy — nega requests sem SSL e restringe acesso ao KnowledgeBucket
+  KnowledgeBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref KnowledgeBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyNonSSLRequests
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt KnowledgeBucket.Arn
+              - !Sub ${KnowledgeBucket.Arn}/*
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  # Bucket Policy — permite apenas ao CloudFront (via OAC) ler os objetos e nega requests sem SSL
   FrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref FrontendBucket
       PolicyDocument:
         Statement:
-          - Sid: PublicReadGetObject
+          - Sid: AllowCloudFrontServicePrincipal
             Effect: Allow
-            Principal: '*'
+            Principal:
+              Service: cloudfront.amazonaws.com
             Action: s3:GetObject
             Resource: !Sub ${FrontendBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}
+          - Sid: DenyNonSSLRequests
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt FrontendBucket.Arn
+              - !Sub ${FrontendBucket.Arn}/*
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
 
   # ============================================================
   # Lambda Functions
@@ -409,8 +581,8 @@ Outputs:
     Value: !Sub https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/
 
   FrontendUrl:
-    Description: URL do Frontend (S3 Website)
-    Value: !GetAtt FrontendBucket.WebsiteURL
+    Description: URL do Frontend (CloudFront)
+    Value: !Sub https://${FrontendDistribution.DomainName}
 
   KnowledgeBucketName:
     Description: Nome do bucket de conhecimento
@@ -419,3 +591,7 @@ Outputs:
   FrontendBucketName:
     Description: Nome do bucket do frontend
     Value: !Ref FrontendBucket
+
+  LogsBucketName:
+    Description: Nome do bucket de logs de acesso S3
+    Value: !Ref LogsBucket

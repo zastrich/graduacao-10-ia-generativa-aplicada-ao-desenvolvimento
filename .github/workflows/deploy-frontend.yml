@@ -13,10 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
           cache-dependency-path: 'src/frontend/package-lock.json'
 
@@ -41,4 +41,17 @@ jobs:
 
       - name: Sync Static Files to S3 Bucket
         run: |
-          aws s3 sync src/frontend/dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} --delete
+          # Arquivos com hash no nome (JS/CSS gerados pelo Vite) — cache longo
+          aws s3 sync src/frontend/dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "public, max-age=31536000, immutable"
+          # index.html — sem cache para garantir que o usuário sempre receba a versão mais recente
+          aws s3 cp src/frontend/dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
