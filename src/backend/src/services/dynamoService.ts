@@ -1,0 +1,121 @@
+/**
+ * DynamoDB Service — abstrai acesso ao DynamoDB usando mock local ou AWS SDK real.
+ */
+
+import { config } from '../utils/config';
+import { mockDynamoDB } from '../mocks/mockDynamoDB';
+
+// Imports condicionais do AWS SDK (só carregados em produção)
+let dynamoDBClient: any = null;
+let DynamoDBDocumentClient: any = null;
+let dynamoCommands: any = {};
+
+async function getAWSClient() {
+  if (config.isLocal) return null;
+  
+  if (!dynamoDBClient) {
+    const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
+    const docClient = await import('@aws-sdk/lib-dynamodb');
+    const client = new DynamoDBClient({ region: config.aws.region });
+    dynamoDBClient = docClient.DynamoDBDocumentClient.from(client);
+    dynamoCommands = docClient;
+  }
+  return dynamoDBClient;
+}
+
+export const dynamoService = {
+  async put(tableName: string, item: Record<string, any>): Promise<Record<string, any>> {
+    if (config.isLocal) {
+      return mockDynamoDB.getTable(tableName).put(item);
+    }
+
+    const client = await getAWSClient();
+    await client.send(new dynamoCommands.PutCommand({
+      TableName: tableName,
+      Item: item,
+    }));
+    return item;
+  },
+
+  async get(tableName: string, key: Record<string, string>): Promise<Record<string, any> | undefined> {
+    if (config.isLocal) {
+      return mockDynamoDB.getTable(tableName).get(key);
+    }
+
+    const client = await getAWSClient();
+    const result = await client.send(new dynamoCommands.GetCommand({
+      TableName: tableName,
+      Key: key,
+    }));
+    return result.Item;
+  },
+
+  async query(tableName: string, keyCondition: Record<string, string>, indexName?: string): Promise<Record<string, any>[]> {
+    if (config.isLocal) {
+      return mockDynamoDB.getTable(tableName).query(keyCondition, indexName);
+    }
+
+    const client = await getAWSClient();
+    const keyName = Object.keys(keyCondition)[0];
+    const result = await client.send(new dynamoCommands.QueryCommand({
+      TableName: tableName,
+      IndexName: indexName,
+      KeyConditionExpression: `#key = :value`,
+      ExpressionAttributeNames: { '#key': keyName },
+      ExpressionAttributeValues: { ':value': keyCondition[keyName] },
+    }));
+    return result.Items || [];
+  },
+
+  async scan(tableName: string): Promise<Record<string, any>[]> {
+    if (config.isLocal) {
+      return mockDynamoDB.getTable(tableName).scan();
+    }
+
+    const client = await getAWSClient();
+    const result = await client.send(new dynamoCommands.ScanCommand({
+      TableName: tableName,
+    }));
+    return result.Items || [];
+  },
+
+  async update(tableName: string, key: Record<string, string>, updates: Record<string, any>): Promise<Record<string, any> | undefined> {
+    if (config.isLocal) {
+      return mockDynamoDB.getTable(tableName).update(key, updates);
+    }
+
+    const client = await getAWSClient();
+    const updateKeys = Object.keys(updates);
+    const updateExpression = 'SET ' + updateKeys.map((k, i) => `#attr${i} = :val${i}`).join(', ');
+    const expressionAttributeNames: Record<string, string> = {};
+    const expressionAttributeValues: Record<string, any> = {};
+
+    updateKeys.forEach((k, i) => {
+      expressionAttributeNames[`#attr${i}`] = k;
+      expressionAttributeValues[`:val${i}`] = updates[k];
+    });
+
+    const result = await client.send(new dynamoCommands.UpdateCommand({
+      TableName: tableName,
+      Key: key,
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes;
+  },
+
+  async delete(tableName: string, key: Record<string, string>): Promise<boolean> {
+    if (config.isLocal) {
+      return mockDynamoDB.getTable(tableName).delete(key);
+    }
+
+    const client = await getAWSClient();
+    await client.send(new dynamoCommands.DeleteCommand({
+      TableName: tableName,
+      Key: key,
+    }));
+    return true;
+  },
+};

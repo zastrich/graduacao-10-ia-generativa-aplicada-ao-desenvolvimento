@@ -1,0 +1,416 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Copiloto Corporativo com IA - Infraestrutura Serverless
+  Assistente corporativo inteligente usando AWS Bedrock (Gemma 3 4b-it)
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        KNOWLEDGE_BASES_TABLE: !Ref KnowledgeBasesTable
+        CONVERSATIONS_TABLE: !Ref ConversationsTable
+        MESSAGES_TABLE: !Ref MessagesTable
+        USERS_TABLE: !Ref UsersTable
+        KNOWLEDGE_BUCKET: !Ref KnowledgeBucket
+        BEDROCK_MODEL_ID: google.gemma-3-4b-it
+        BEDROCK_REGION: us-east-1
+        JWT_SECRET: !Ref JwtSecret
+    Architectures:
+      - x86_64
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  JwtSecret:
+    Type: String
+    Default: copiloto-jwt-secret-change-in-production
+    NoEcho: true
+
+Resources:
+  # ============================================================
+  # API Gateway
+  # ============================================================
+  CopilotoApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub copiloto-api-${Stage}
+      StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+  # ============================================================
+  # DynamoDB Tables
+  # ============================================================
+  KnowledgeBasesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub copiloto-knowledge-bases-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: slug
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: slug-index
+          KeySchema:
+            - AttributeName: slug
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub copiloto-conversations-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userUid
+          AttributeType: S
+        - AttributeName: knowledgeBaseId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: userUid-index
+          KeySchema:
+            - AttributeName: userUid
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: knowledgeBase-index
+          KeySchema:
+            - AttributeName: knowledgeBaseId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub copiloto-messages-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: conversationId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: conversationId
+          KeyType: HASH
+        - AttributeName: createdAt
+          KeyType: RANGE
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub copiloto-users-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ============================================================
+  # S3 Buckets
+  # ============================================================
+  KnowledgeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub conhecimento-ia-generativa-${Stage}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, DELETE]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub copiloto-frontend-${Stage}
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+
+  # --- Auth ---
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-auth-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/auth.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Login:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /auth/login
+            Method: POST
+        Register:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /auth/register
+            Method: POST
+
+  # --- Knowledge Bases ---
+  KnowledgeBasesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-knowledge-bases-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/knowledgeBases.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref KnowledgeBasesTable
+        - S3CrudPolicy:
+            BucketName: !Ref KnowledgeBucket
+      Events:
+        Create:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases
+            Method: POST
+        List:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases
+            Method: GET
+        GetOne:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}
+            Method: GET
+        Update:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}
+            Method: PUT
+        Delete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}
+            Method: DELETE
+        Retrain:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/retrain
+            Method: POST
+
+  # --- File Upload ---
+  FileUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-file-upload-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/files.handler
+      Timeout: 120
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref KnowledgeBasesTable
+        - S3CrudPolicy:
+            BucketName: !Ref KnowledgeBucket
+      Events:
+        Upload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/files
+            Method: POST
+        DeleteFile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/files/{fileId}
+            Method: DELETE
+        AddLink:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/links
+            Method: POST
+
+  # --- Chat / Inference ---
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-chat-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/chat.handler
+      Timeout: 120
+      MemorySize: 512
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref KnowledgeBasesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConversationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessagesTable
+        - S3ReadPolicy:
+            BucketName: !Ref KnowledgeBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: '*'
+      Events:
+        SendMessage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /chat/{slug}
+            Method: POST
+
+  # --- Conversations ---
+  ConversationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-conversations-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/conversations.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConversationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessagesTable
+      Events:
+        ListByUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /conversations/{uid}
+            Method: GET
+        GetConversation:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /conversations/{uid}/{conversationId}
+            Method: GET
+
+  # --- Public Knowledge Bases ---
+  PublicKnowledgeBasesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-public-kb-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/publicKnowledgeBases.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref KnowledgeBasesTable
+      Events:
+        ListPublic:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /knowledge-bases
+            Method: GET
+        GetBySlug:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /knowledge-bases/{slug}
+            Method: GET
+
+  # --- Admin Logs ---
+  AdminLogsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub copiloto-admin-logs-${Stage}
+      CodeUri: ../backend/dist/
+      Handler: handlers/adminLogs.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConversationsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MessagesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref KnowledgeBasesTable
+      Events:
+        GetLogs:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/logs
+            Method: GET
+
+# ============================================================
+# Outputs
+# ============================================================
+Outputs:
+  ApiUrl:
+    Description: URL da API Gateway
+    Value: !Sub 'https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/'
+
+  FrontendUrl:
+    Description: URL do Frontend (S3 Website)
+    Value: !GetAtt FrontendBucket.WebsiteURL
+
+  KnowledgeBucketName:
+    Description: Nome do bucket de conhecimento
+    Value: !Ref KnowledgeBucket
+
+  FrontendBucketName:
+    Description: Nome do bucket do frontend
+    Value: !Ref FrontendBucket
