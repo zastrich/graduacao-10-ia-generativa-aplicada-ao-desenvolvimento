@@ -12,6 +12,9 @@ import { config } from './utils/config';
 process.env.IS_LOCAL = 'true';
 process.env.NODE_ENV = 'development';
 
+// Valida configuração de segurança no startup (exibe aviso sobre JWT_SECRET fraco em dev)
+import './utils/config';
+
 // Import dos handlers
 import { handler as authHandler } from './handlers/auth';
 import { handler as knowledgeBasesHandler } from './handlers/knowledgeBases';
@@ -34,6 +37,7 @@ const routes: Route[] = [
   // Auth
   { method: 'POST', pattern: /^\/auth\/login$/, handler: authHandler, resource: '/auth/login', paramNames: [] },
   { method: 'POST', pattern: /^\/auth\/register$/, handler: authHandler, resource: '/auth/register', paramNames: [] },
+  { method: 'GET', pattern: /^\/auth\/status$/, handler: authHandler, resource: '/auth/status', paramNames: [] },
 
   // Admin - Knowledge Bases
   { method: 'POST', pattern: /^\/admin\/knowledge-bases$/, handler: knowledgeBasesHandler, resource: '/admin/knowledge-bases', paramNames: [] },
@@ -165,6 +169,7 @@ server.listen(config.localServer.port, () => {
   console.log('Rotas disponíveis:');
   console.log('  POST   /auth/login');
   console.log('  POST   /auth/register');
+  console.log('  GET    /auth/status');
   console.log('  CRUD   /admin/knowledge-bases/*');
   console.log('  POST   /admin/knowledge-bases/:id/files');
   console.log('  POST   /admin/knowledge-bases/:id/links');

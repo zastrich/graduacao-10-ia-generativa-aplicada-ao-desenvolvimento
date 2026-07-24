@@ -8,23 +8,24 @@ import { requireAuth } from '../utils/auth';
 import { success, badRequest, error, corsPreflightResponse } from '../utils/response';
 
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  if (event.httpMethod === 'OPTIONS') return corsPreflightResponse();
+  const origin = event.headers?.origin || event.headers?.Origin;
+  if (event.httpMethod === 'OPTIONS') return corsPreflightResponse(origin);
 
   try {
     requireAuth(event);
 
     if (event.httpMethod === 'GET') {
-      return await getLogs(event);
+      return await getLogs(event, origin);
     }
 
-    return badRequest('Método não suportado');
+    return badRequest('Método não suportado', origin);
   } catch (err: any) {
     console.error('AdminLogs handler error:', err);
-    return error(err.message || 'Erro interno', err.statusCode || 500);
+    return error(err.message || 'Erro interno', err.statusCode || 500, origin);
   }
 }
 
-async function getLogs(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function getLogs(event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
   const knowledgeBaseId = event.queryStringParameters?.knowledgeBaseId;
 
   let conversations;
@@ -34,5 +35,5 @@ async function getLogs(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResu
     conversations = await chatService.getAllConversations();
   }
 
-  return success(conversations);
+  return success(conversations, 200, origin);
 }

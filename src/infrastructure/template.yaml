@@ -15,9 +15,11 @@ Globals:
         MESSAGES_TABLE: !Ref MessagesTable
         USERS_TABLE: !Ref UsersTable
         KNOWLEDGE_BUCKET: !Ref KnowledgeBucket
-        BEDROCK_MODEL_ID: google.gemma-3-4b-it
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_REGION: us-east-1
         JWT_SECRET: !Ref JwtSecret
+        # Task 7: ALLOWED_ORIGINS usa a URL do CloudFront para restringir CORS
+        ALLOWED_ORIGINS: !Sub https://${FrontendDistribution.DomainName}
     Architectures:
       - x86_64
 
@@ -29,10 +31,21 @@ Parameters:
       - dev
       - staging
       - prod
+
+  # Task 1 / Task 8: sem Default — deploy falha explicitamente se não fornecido
   JwtSecret:
     Type: String
-    Default: copiloto-jwt-secret-change-in-production
     NoEcho: true
+    MinLength: 32
+    Description: >
+      Segredo usado para assinar JWTs. Obrigatório. Gere com:
+      node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+  # Task 8: parâmetro para o modelo Bedrock, usado no ARN da IAM policy
+  BedrockModelId:
+    Type: String
+    Default: google.gemma-3-4b-it
+    Description: ID do modelo Bedrock usado para inferência.
 
 Resources:
   # ============================================================
@@ -43,10 +56,12 @@ Resources:
     Properties:
       Name: !Sub copiloto-api-${Stage}
       StageName: !Ref Stage
+      # Task 7: CORS restrito à origem do CloudFront
       Cors:
         AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
         AllowHeaders: '''Content-Type,Authorization'''
-        AllowOrigin: '''*'''
+        AllowOrigin: !Sub '''https://${FrontendDistribution.DomainName}'''
+        AllowCredentials: true
 
   # ============================================================
   # DynamoDB Tables
@@ -162,7 +177,7 @@ Resources:
   # S3 Buckets
   # ============================================================
 
-  # Bucket de logs — destino centralizado para access logs do KnowledgeBucket e FrontendBucket
+  # Bucket de logs — destino centralizado para access logs
   LogsBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -184,7 +199,6 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerPreferred
-      # Logs do próprio bucket de logs são escritos em si mesmo (self-logging)
       LoggingConfiguration:
         LogFilePrefix: logs-bucket/
 
@@ -211,7 +225,7 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       BucketName: !Sub conhecimento-ia-generativa-${Stage}
-      # Bucket privado — acesso exclusivo pelas Lambdas via IAM (S3CrudPolicy / S3ReadPolicy)
+      # Bucket privado — acesso exclusivo pelas Lambdas via IAM
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -227,18 +241,7 @@ Resources:
       LoggingConfiguration:
         DestinationBucketName: !Ref LogsBucket
         LogFilePrefix: knowledge-bucket/
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders:
-              - '*'
-            AllowedMethods:
-              - GET
-              - PUT
-              - POST
-              - DELETE
-            AllowedOrigins:
-              - '*'
-            MaxAge: 3600
+      # Task 7 / L4: removido CorsConfiguration — bucket é privado, sem acesso direto do browser
 
   FrontendBucket:
     Type: AWS::S3::Bucket
@@ -263,7 +266,7 @@ Resources:
         DestinationBucketName: !Ref LogsBucket
         LogFilePrefix: frontend-bucket/
 
-  # Origin Access Control — permite ao CloudFront assinar requests ao S3 sem tornar o bucket público
+  # Origin Access Control — permite ao CloudFront assinar requests ao S3
   FrontendOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -273,7 +276,43 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-  # CloudFront Distribution — CDN + HTTPS + SPA fallback para index.html
+  # Task 9: Security Headers Policy para o CloudFront
+  SecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub copiloto-security-headers-${Stage}
+        Comment: Security headers para o frontend do Copiloto Corporativo
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: true
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          XSSProtection:
+            ModeBlock: true
+            Protection: true
+            Override: true
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: !Sub >
+              default-src 'self';
+              script-src 'self' 'unsafe-inline';
+              style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+              font-src 'self' https://fonts.gstatic.com;
+              img-src 'self' data:;
+              connect-src 'self' https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com;
+              frame-ancestors 'none';
+            Override: true
+
+  # CloudFront Distribution — CDN + HTTPS + SPA fallback + Security Headers
   FrontendDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -290,14 +329,16 @@ Resources:
         DefaultCacheBehavior:
           TargetOriginId: FrontendS3Origin
           ViewerProtocolPolicy: redirect-to-https
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized (gerenciada pela AWS)
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized (gerenciada pela AWS)
+          # Task 9: associa a policy de security headers
+          ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
           AllowedMethods:
             - GET
             - HEAD
           CachedMethods:
             - GET
             - HEAD
-        # Redireciona erros 403/404 para index.html — necessário para SPA com client-side routing
+        # Redireciona erros 403/404 para index.html (SPA routing)
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
@@ -308,9 +349,9 @@ Resources:
             ResponsePagePath: /index.html
             ErrorCachingMinTTL: 0
         HttpVersion: http2and3
-        PriceClass: PriceClass_100 # Apenas regiões NA + Europa (menor custo)
+        PriceClass: PriceClass_100
 
-  # Bucket Policy — nega requests sem SSL e restringe acesso ao KnowledgeBucket
+  # Bucket Policy — nega requests sem SSL ao KnowledgeBucket
   KnowledgeBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -328,7 +369,7 @@ Resources:
               Bool:
                 'aws:SecureTransport': false
 
-  # Bucket Policy — permite apenas ao CloudFront (via OAC) ler os objetos e nega requests sem SSL
+  # Bucket Policy — permite apenas CloudFront (OAC) ler objetos do FrontendBucket
   FrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -370,6 +411,12 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
       Events:
+        Status:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /auth/status
+            Method: GET
         Login:
           Type: Api
           Properties:
@@ -478,7 +525,8 @@ Resources:
       Timeout: 120
       MemorySize: 512
       Policies:
-        - DynamoDBCrudPolicy:
+        # Task 8: KnowledgeBases é só leitura para o chat
+        - DynamoDBReadPolicy:
             TableName: !Ref KnowledgeBasesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConversationsTable
@@ -486,12 +534,14 @@ Resources:
             TableName: !Ref MessagesTable
         - S3ReadPolicy:
             BucketName: !Ref KnowledgeBucket
+        # Task 8: Bedrock restrito ao ARN do modelo específico
         - Statement:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
-              Resource: '*'
+              Resource:
+                - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}
       Events:
         SendMessage:
           Type: Api
@@ -508,9 +558,9 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: handlers/conversations.handler
       Policies:
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref ConversationsTable
-        - DynamoDBCrudPolicy:
+        - DynamoDBReadPolicy:
             TableName: !Ref MessagesTable
       Events:
         ListByUser:

@@ -8,8 +8,43 @@ on:
       - '.github/workflows/deploy-frontend.yml'
 
 jobs:
-  build-and-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: 'src/frontend/package-lock.json'
+
+      - name: Install Dependencies
+        run: |
+          cd src/frontend
+          npm ci
+
+      # Task 11: auditoria de segurança de dependências — bloqueia vulnerabilidades altas/críticas
+      - name: Security Audit
+        run: |
+          cd src/frontend
+          npm audit --audit-level=high
+
+      - name: Build React SPA
+        run: |
+          cd src/frontend
+          npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+  # Task 11: job separado com gate de aprovação manual via environment "production"
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    # Requer aprovação manual configurada em:
+    # Settings → Environments → production → Required reviewers
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +81,7 @@ jobs:
             --delete \
             --exclude "index.html" \
             --cache-control "public, max-age=31536000, immutable"
-          # index.html — sem cache para garantir que o usuário sempre receba a versão mais recente
+          # index.html — sem cache para garantir versão mais recente
           aws s3 cp src/frontend/dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
 

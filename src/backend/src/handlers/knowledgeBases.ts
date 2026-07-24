@@ -8,8 +8,12 @@ import { requireAuth } from '../utils/auth';
 import { success, created, noContent, badRequest, error, corsPreflightResponse } from '../utils/response';
 import { CreateKnowledgeBaseRequest, UpdateKnowledgeBaseRequest } from '../utils/types';
 
+const MAX_NAME_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 1000;
+
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  if (event.httpMethod === 'OPTIONS') return corsPreflightResponse();
+  const origin = event.headers?.origin || event.headers?.Origin;
+  if (event.httpMethod === 'OPTIONS') return corsPreflightResponse(origin);
 
   try {
     // Todas as rotas admin requerem auth
@@ -20,69 +24,86 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     switch (event.httpMethod) {
       case 'POST':
         if (id && event.resource?.includes('/retrain')) {
-          return await retrain(id);
+          return await retrain(id, origin);
         }
-        return await createKnowledgeBase(event);
+        return await createKnowledgeBase(event, origin);
 
       case 'GET':
-        if (id) return await getKnowledgeBase(id);
-        return await listKnowledgeBases();
+        if (id) return await getKnowledgeBase(id, origin);
+        return await listKnowledgeBases(origin);
 
       case 'PUT':
-        if (!id) return badRequest('ID é obrigatório');
-        return await updateKnowledgeBase(id, event);
+        if (!id) return badRequest('ID é obrigatório', origin);
+        return await updateKnowledgeBase(id, event, origin);
 
       case 'DELETE':
-        if (!id) return badRequest('ID é obrigatório');
-        return await deleteKnowledgeBase(id);
+        if (!id) return badRequest('ID é obrigatório', origin);
+        return await deleteKnowledgeBase(id, origin);
 
       default:
-        return badRequest('Método não suportado');
+        return badRequest('Método não suportado', origin);
     }
   } catch (err: any) {
     console.error('KnowledgeBases handler error:', err);
-    return error(err.message || 'Erro interno', err.statusCode || 500);
+    return error(err.message || 'Erro interno', err.statusCode || 500, origin);
   }
 }
 
-async function createKnowledgeBase(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function createKnowledgeBase(event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
   const body = JSON.parse(event.body || '{}') as CreateKnowledgeBaseRequest;
 
   if (!body.name || !body.slug || !body.description) {
-    return badRequest('Nome, slug e descrição são obrigatórios');
+    return badRequest('Nome, slug e descrição são obrigatórios', origin);
+  }
+
+  // Valida tamanhos máximos (M6)
+  if (body.name.length > MAX_NAME_LENGTH) {
+    return badRequest(`Nome não pode ultrapassar ${MAX_NAME_LENGTH} caracteres`, origin);
+  }
+  if (body.description.length > MAX_DESCRIPTION_LENGTH) {
+    return badRequest(`Descrição não pode ultrapassar ${MAX_DESCRIPTION_LENGTH} caracteres`, origin);
   }
 
   // Valida slug (apenas letras minúsculas, números e hífens)
   if (!/^[a-z0-9-]+$/.test(body.slug)) {
-    return badRequest('Slug deve conter apenas letras minúsculas, números e hífens');
+    return badRequest('Slug deve conter apenas letras minúsculas, números e hífens', origin);
   }
 
   const kb = await knowledgeBaseService.create(body);
-  return created(kb);
+  return created(kb, origin);
 }
 
-async function listKnowledgeBases(): Promise<APIGatewayProxyResult> {
+async function listKnowledgeBases(origin?: string): Promise<APIGatewayProxyResult> {
   const bases = await knowledgeBaseService.list();
-  return success(bases);
+  return success(bases, 200, origin);
 }
 
-async function getKnowledgeBase(id: string): Promise<APIGatewayProxyResult> {
+async function getKnowledgeBase(id: string, origin?: string): Promise<APIGatewayProxyResult> {
   const kb = await knowledgeBaseService.getById(id);
-  return success(kb);
+  return success(kb, 200, origin);
 }
 
-async function updateKnowledgeBase(id: string, event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function updateKnowledgeBase(id: string, event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
   const body = JSON.parse(event.body || '{}') as UpdateKnowledgeBaseRequest;
+
+  // Valida tamanhos se fornecidos
+  if (body.name && body.name.length > MAX_NAME_LENGTH) {
+    return badRequest(`Nome não pode ultrapassar ${MAX_NAME_LENGTH} caracteres`, origin);
+  }
+  if (body.description && body.description.length > MAX_DESCRIPTION_LENGTH) {
+    return badRequest(`Descrição não pode ultrapassar ${MAX_DESCRIPTION_LENGTH} caracteres`, origin);
+  }
+
   const kb = await knowledgeBaseService.update(id, body);
-  return success(kb);
+  return success(kb, 200, origin);
 }
 
-async function deleteKnowledgeBase(id: string): Promise<APIGatewayProxyResult> {
+async function deleteKnowledgeBase(id: string, origin?: string): Promise<APIGatewayProxyResult> {
   await knowledgeBaseService.delete(id);
-  return noContent();
+  return noContent(origin);
 }
 
-async function retrain(id: string): Promise<APIGatewayProxyResult> {
+async function retrain(id: string, origin?: string): Promise<APIGatewayProxyResult> {
   const kb = await knowledgeBaseService.retrain(id);
-  return success(kb);
+  return success(kb, 200, origin);
 }

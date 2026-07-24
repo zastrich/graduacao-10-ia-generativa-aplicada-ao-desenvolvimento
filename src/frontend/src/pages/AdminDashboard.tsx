@@ -29,7 +29,8 @@ import { fetchAdminKnowledgeBases, deleteKnowledgeBase } from '../api/client';
 import type { KnowledgeBase } from '../types';
 import { AdminKBModal } from '../components/admin/AdminKBModal';
 import { AdminFilesModal } from '../components/admin/AdminFilesModal';
-import { getAdminToken } from '../utils/uid';
+import { removeAdminToken, isAdminAuthenticated } from '../utils/uid';
+import { Logout as LogoutIcon } from '@mui/icons-material';
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ export const AdminDashboard: React.FC = () => {
   const [selectedKbForFiles, setSelectedKbForFiles] = useState<KnowledgeBase | null>(null);
 
   useEffect(() => {
-    if (!getAdminToken()) {
+    if (!isAdminAuthenticated()) {
       navigate('/admin/login');
       return;
     }
@@ -122,6 +123,18 @@ export const AdminDashboard: React.FC = () => {
             sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' }}
           >
             Nova Base
+          </Button>
+
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<LogoutIcon />}
+            onClick={() => {
+              removeAdminToken();
+              navigate('/admin/login');
+            }}
+          >
+            Sair
           </Button>
         </Box>
       </Box>

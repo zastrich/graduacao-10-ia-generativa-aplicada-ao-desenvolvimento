@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getAdminToken, getUserUid } from '../utils/uid';
+import { getAdminToken, removeAdminToken, getUserUid } from '../utils/uid';
 import type {
   KnowledgeBase,
   Conversation,
@@ -7,7 +7,7 @@ import type {
   UserPublic,
 } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -16,7 +16,7 @@ export const apiClient = axios.create({
   },
 });
 
-// Interceptor para adicionar token JWT se existir
+// Interceptor de requisição — injeta JWT de admin se existir
 apiClient.interceptors.request.use((config) => {
   const token = getAdminToken();
   if (token && config.headers) {
@@ -24,6 +24,22 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Interceptor de resposta — redireciona para login se token expirar/for inválido
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Remove token inválido e redireciona para login
+      removeAdminToken();
+      // Evita redirecionar se já estiver na página de login
+      if (!window.location.pathname.includes('/admin/login')) {
+        window.location.href = '/admin/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // --- Public Endpoints ---
 export async function fetchPublicKnowledgeBases(): Promise<KnowledgeBase[]> {
@@ -66,6 +82,11 @@ export async function fetchConversationDetails(conversationId: string): Promise<
 }
 
 // --- Admin Auth Endpoints ---
+export async function fetchAuthStatus(): Promise<{ isFirstRun: boolean }> {
+  const res = await apiClient.get<{ isFirstRun: boolean }>('/auth/status');
+  return res.data;
+}
+
 export async function adminLogin(email: string, password: string): Promise<AuthResponse> {
   const res = await apiClient.post<AuthResponse>('/auth/login', { email, password });
   return res.data;

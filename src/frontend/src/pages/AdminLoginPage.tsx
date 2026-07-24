@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -11,17 +11,28 @@ import {
 } from '@mui/material';
 import { AdminPanelSettings as AdminIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { adminLogin, adminRegister } from '../api/client';
+import { adminLogin, adminRegister, fetchAuthStatus } from '../api/client';
 import { setAdminToken } from '../utils/uid';
 
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const [isRegister, setIsRegister] = useState(false);
+
+  // isFirstRun: null = carregando, true = banco vazio, false = já tem admin
+  const [isFirstRun, setIsFirstRun] = useState<boolean | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Consulta o status da plataforma ao montar o componente
+  useEffect(() => {
+    fetchAuthStatus()
+      .then((status) => setIsFirstRun(status.isFirstRun))
+      .catch(() => setIsFirstRun(false)); // em caso de erro, assume que já existe admin
+  }, []);
+
+  const isRegister = isFirstRun === true;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,13 +54,23 @@ export const AdminLoginPage: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       setError(
-        err.response?.data?.message ||
+        err.response?.data?.error ||
+          err.response?.data?.message ||
           'Falha na autenticação. Verifique suas credenciais.'
       );
     } finally {
       setLoading(false);
     }
   };
+
+  // Tela de carregamento enquanto verifica o status
+  if (isFirstRun === null) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '70vh' }}>
+        <CircularProgress color="primary" />
+      </Box>
+    );
+  }
 
   return (
     <Box
@@ -89,12 +110,20 @@ export const AdminLoginPage: React.FC = () => {
               <AdminIcon sx={{ color: '#FFF', fontSize: 30 }} />
             </Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: '#F8FAFC' }}>
-              {isRegister ? 'Novo Administrador' : 'Acesso Administrativo'}
+              {isRegister ? 'Configuração Inicial' : 'Acesso Administrativo'}
             </Typography>
             <Typography variant="body2" sx={{ color: '#94A3B8', mt: 0.5 }}>
-              Área protegida por senha para gestão de bases e guardrails.
+              {isRegister
+                ? 'Crie o primeiro administrador da plataforma.'
+                : 'Área protegida por senha para gestão de bases e guardrails.'}
             </Typography>
           </Box>
+
+          {isRegister && (
+            <Alert severity="info" sx={{ mb: 2, borderRadius: '12px' }}>
+              Nenhum administrador cadastrado. Crie o primeiro agora.
+            </Alert>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }}>
@@ -134,6 +163,7 @@ export const AdminLoginPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               margin="normal"
               required
+              helperText={isRegister ? 'Mínimo 12 caracteres' : undefined}
               variant="outlined"
             />
 
@@ -153,24 +183,11 @@ export const AdminLoginPage: React.FC = () => {
               {loading ? (
                 <CircularProgress size={24} color="inherit" />
               ) : isRegister ? (
-                'Cadastrar Administrador'
+                'Criar Administrador'
               ) : (
                 'Entrar no Painel'
               )}
             </Button>
-
-            <Box sx={{ textAlign: 'center' }}>
-              <Button
-                color="secondary"
-                size="small"
-                onClick={() => {
-                  setIsRegister(!isRegister);
-                  setError(null);
-                }}
-              >
-                {isRegister ? 'Já possui conta? Faça Login' : 'Criar novo usuário Admin'}
-              </Button>
-            </Box>
           </Box>
         </CardContent>
       </Card>

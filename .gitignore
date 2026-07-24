@@ -2,3 +2,7 @@ node_modules
 .vscode
 src/video
 .env
+
+# Build outputs
+src/backend/dist
+src/frontend/dist
