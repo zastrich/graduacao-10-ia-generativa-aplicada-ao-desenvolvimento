@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "wa-guardrails": {
+      "source": "aws-samples/sample-well-architected-skills-and-steering",
+      "sourceType": "github",
+      "skillPath": "skills/wa-guardrails/SKILL.md",
+      "computedHash": "a31bc320a6685ac84fcc0ccd4686aa9e1da58d2017284581b5227fd57594a27e"
+    }
+  }
+}
