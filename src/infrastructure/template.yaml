@@ -321,17 +321,8 @@ Resources:
             Protection: true
             Override: true
           ContentSecurityPolicy:
-            # connect-src aponta para o padrão genérico do API Gateway na região.
-            # Não usa !Sub com CopilotoApi para evitar dependência circular.
-            # Após o primeiro deploy, atualize para o ARN específico da API se necessário.
-            ContentSecurityPolicy: >
-              default-src 'self';
-              script-src 'self' 'unsafe-inline';
-              style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-              font-src 'self' https://fonts.gstatic.com;
-              img-src 'self' data:;
-              connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com;
-              frame-ancestors 'none';
+            # CSP em uma única linha — CloudFront rejeita valores com newlines (illegal characters)
+            ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com; frame-ancestors 'none';"
             Override: true
 
   # CloudFront Distribution — CDN + HTTPS + SPA fallback + Security Headers
