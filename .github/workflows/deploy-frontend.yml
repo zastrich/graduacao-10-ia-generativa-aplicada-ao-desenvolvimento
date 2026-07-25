@@ -100,8 +100,9 @@ jobs:
         run: |
           # CLOUDFRONT_DISTRIBUTION_ID é uma variable (Settings → Variables)
           CF_ID="${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}"
-          if [ -z "$CF_ID" ]; then
-            echo "::warning::Variable CLOUDFRONT_DISTRIBUTION_ID não configurada — invalidação ignorada."
+          # Ignora se vazio ou placeholder ainda não configurado ("-", "none", etc.)
+          if [ -z "$CF_ID" ] || [ "$CF_ID" = "-" ] || [ "$CF_ID" = "none" ]; then
+            echo "::warning::CLOUDFRONT_DISTRIBUTION_ID não configurado ou é placeholder — invalidação ignorada."
             exit 0
           fi
           aws cloudfront create-invalidation \
