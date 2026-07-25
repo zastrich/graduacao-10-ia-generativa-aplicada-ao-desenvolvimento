@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
 import { Box } from '@mui/material';
+import { Outlet } from '@tanstack/react-router';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 
-interface AppLayoutProps {
-  children: React.ReactNode;
-}
-
-export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
+export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleToggleSidebar = () => {
@@ -28,7 +25,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           margin: '0 auto',
         }}
       >
-        {children}
+        <Outlet />
       </Box>
     </Box>
   );

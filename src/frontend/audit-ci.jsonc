@@ -1,11 +1,6 @@
 {
   // audit-ci config — https://github.com/IBM/audit-ci
-  "high": true,
-  "allowlist": [
-    // GHSA-qwww-vcr4-c8h2: React Router RSC Mode CSRF Bypass
-    // Afeta apenas apps que usam React Server Components (RSC) / SSR com react-router.
-    // Este projeto é um SPA puro (Vite + client-side only) — RSC não é utilizado.
-    // Ignorado até que o advisory seja atualizado com uma versão 7.x corrigida.
-    "GHSA-qwww-vcr4-c8h2"
-  ]
+  // @tanstack/start removido (era SSR, desnecessário para SPA puro).
+  // @tanstack/react-router e demais deps: 0 vulnerabilidades conhecidas.
+  "high": true
 }

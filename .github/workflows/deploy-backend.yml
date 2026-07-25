@@ -11,10 +11,10 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.0
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -25,11 +25,11 @@ jobs:
           cd src/backend
           npm ci
 
-      # Task 11: auditoria de segurança de dependências — bloqueia vulnerabilidades altas/críticas
+      # Task 7: auditoria de segurança — usa audit-ci com allowlist para xlsx (sem fix disponível no npm)
       - name: Security Audit
         run: |
           cd src/backend
-          npm audit --audit-level=high
+          npx audit-ci --config audit-ci.jsonc
 
       - name: Run Unit Tests
         run: |
@@ -49,10 +49,10 @@ jobs:
     # Settings → Environments → production → Required reviewers
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.0
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4.1.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -83,6 +83,7 @@ jobs:
           cd src/infrastructure
           sam build
           sam deploy \
+            --resolve-s3 \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --stack-name copiloto-corporativo-stack \
