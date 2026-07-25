@@ -25,8 +25,6 @@ jobs:
           cd src/frontend
           npm ci
 
-      # Task 11: auditoria de segurança de dependências — bloqueia vulnerabilidades altas/críticas
-      # Usa audit-ci para suportar allowlist de advisories que não afetam este projeto
       - name: Security Audit
         run: |
           cd src/frontend
@@ -37,14 +35,12 @@ jobs:
           cd src/frontend
           npm run build
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          # VITE_API_URL é uma variable (não secret) — valor não sensível
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
-  # Task 11: job separado com gate de aprovação manual via environment "production"
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
-    # Requer aprovação manual configurada em:
-    # Settings → Environments → production → Required reviewers
     environment: production
     steps:
       - uses: actions/checkout@v4.2.0
@@ -66,7 +62,7 @@ jobs:
           cd src/frontend
           npm run build
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -75,45 +71,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Get Frontend Bucket from CloudFormation Output
-        id: cfn
-        run: |
-          # Lê o nome do bucket diretamente do Output da stack SAM
-          # Isso elimina a dependência do secret FRONTEND_S3_BUCKET
-          BUCKET=$(aws cloudformation describe-stacks \
-            --stack-name copiloto-corporativo-stack \
-            --region us-east-1 \
-            --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue" \
-            --output text)
-          if [ -z "$BUCKET" ]; then
-            echo "::error::FrontendBucketName não encontrado nos Outputs da stack. Garanta que o deploy de infra foi executado primeiro."
-            exit 1
-          fi
-          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
-          echo "Frontend bucket: $BUCKET"
-
-      - name: Get CloudFront Distribution ID from CloudFormation Output
-        id: cfn_cf
-        run: |
-          CF_DIST=$(aws cloudformation describe-stacks \
-            --stack-name copiloto-corporativo-stack \
-            --region us-east-1 \
-            --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" \
-            --output text | sed 's|https://||' | sed 's|/||g')
-          # Busca o ID da distribuição pelo domínio
-          CF_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?DomainName=='${CF_DIST}'].Id" \
-            --output text 2>/dev/null || echo "")
-          if [ -z "$CF_ID" ] && [ -n "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
-            CF_ID="${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}"
-          fi
-          echo "distribution_id=$CF_ID" >> $GITHUB_OUTPUT
-          echo "CloudFront distribution: $CF_ID"
-
       - name: Sync Static Files to S3 Bucket
         run: |
-          BUCKET="${{ steps.cfn.outputs.bucket }}"
-          # Arquivos com hash no nome (JS/CSS gerados pelo Vite) — cache longo
+          # FRONTEND_S3_BUCKET é uma variable (Settings → Variables)
+          BUCKET="${{ vars.FRONTEND_S3_BUCKET }}"
+          if [ -z "$BUCKET" ]; then
+            echo "::error::Variable FRONTEND_S3_BUCKET não configurada. Acesse Settings → Variables e adicione o nome do bucket."
+            exit 1
+          fi
+          # Arquivos com hash (JS/CSS gerados pelo Vite) — cache longo
           aws s3 sync src/frontend/dist/ s3://${BUCKET} \
             --delete \
             --exclude "index.html" \
@@ -124,9 +90,10 @@ jobs:
 
       - name: Invalidate CloudFront Cache
         run: |
-          CF_ID="${{ steps.cfn_cf.outputs.distribution_id }}"
+          # CLOUDFRONT_DISTRIBUTION_ID é uma variable (Settings → Variables)
+          CF_ID="${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}"
           if [ -z "$CF_ID" ]; then
-            echo "::warning::CloudFront distribution ID não encontrado — invalidação ignorada."
+            echo "::warning::Variable CLOUDFRONT_DISTRIBUTION_ID não configurada — invalidação ignorada."
             exit 0
           fi
           aws cloudfront create-invalidation \

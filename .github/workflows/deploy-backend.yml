@@ -25,7 +25,6 @@ jobs:
           cd src/backend
           npm ci
 
-      # Task 7: auditoria de segurança — usa audit-ci com allowlist para xlsx (sem fix disponível no npm)
       - name: Security Audit
         run: |
           cd src/backend
@@ -41,12 +40,9 @@ jobs:
           cd src/backend
           npm run build
 
-  # Task 11: job separado com gate de aprovação manual via environment "production"
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
-    # Requer aprovação manual configurada em:
-    # Settings → Environments → production → Required reviewers
     environment: production
     steps:
       - uses: actions/checkout@v4.2.0
@@ -78,31 +74,25 @@ jobs:
       - name: Setup AWS SAM CLI
         uses: aws-actions/setup-sam@v2
 
-      - name: Cleanup SAM managed stack if stuck
+      - name: Cleanup stacks in bad state
         run: |
-          STATUS=$(aws cloudformation describe-stacks \
-            --stack-name aws-sam-cli-managed-default \
-            --region us-east-1 \
-            --query "Stacks[0].StackStatus" \
-            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
-          echo "SAM managed stack status: $STATUS"
-          # Deleta a stack managed se estiver em estado inválido (REVIEW_IN_PROGRESS ou ROLLBACK_*)
-          if [[ "$STATUS" == "REVIEW_IN_PROGRESS" || "$STATUS" == "ROLLBACK_COMPLETE" || "$STATUS" == "ROLLBACK_FAILED" ]]; then
-            echo "Stack em estado inválido ($STATUS). Deletando para permitir recriação pelo SAM..."
-            aws cloudformation delete-stack \
-              --stack-name aws-sam-cli-managed-default \
-              --region us-east-1
-            aws cloudformation wait stack-delete-complete \
-              --stack-name aws-sam-cli-managed-default \
-              --region us-east-1
-            echo "Stack deletada com sucesso."
-          else
-            echo "Stack em estado válido ou inexistente — nenhuma ação necessária."
-          fi
+          # Limpa a managed stack do SAM se estiver em estado inválido
+          for STACK in "aws-sam-cli-managed-default" "copiloto-corporativo-stack"; do
+            STATUS=$(aws cloudformation describe-stacks \
+              --stack-name "$STACK" \
+              --region us-east-1 \
+              --query "Stacks[0].StackStatus" \
+              --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+            echo "$STACK status: $STATUS"
+            if [[ "$STATUS" == "REVIEW_IN_PROGRESS" || "$STATUS" == "ROLLBACK_COMPLETE" || "$STATUS" == "ROLLBACK_FAILED" ]]; then
+              echo "Deletando stack $STACK ($STATUS)..."
+              aws cloudformation delete-stack --stack-name "$STACK" --region us-east-1
+              aws cloudformation wait stack-delete-complete --stack-name "$STACK" --region us-east-1
+              echo "$STACK deletada."
+            fi
+          done
 
       - name: Package & Deploy Lambdas
-        env:
-          ALLOWED_ORIGIN: ${{ secrets.ALLOWED_ORIGIN || '*' }}
         run: |
           cd src/infrastructure
           sam build
@@ -113,6 +103,6 @@ jobs:
             --stack-name copiloto-corporativo-stack \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --parameter-overrides \
-              Stage=prod \
+              Stage=${{ vars.DEPLOY_STAGE || 'prod' }} \
               JwtSecret=${{ secrets.JWT_SECRET }} \
-              AllowedOrigin="${ALLOWED_ORIGIN}"
+              AllowedOrigin="${{ vars.ALLOWED_ORIGIN || '*' }}"
