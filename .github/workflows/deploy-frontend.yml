@@ -75,19 +75,60 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: Get Frontend Bucket from CloudFormation Output
+        id: cfn
+        run: |
+          # Lê o nome do bucket diretamente do Output da stack SAM
+          # Isso elimina a dependência do secret FRONTEND_S3_BUCKET
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name copiloto-corporativo-stack \
+            --region us-east-1 \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue" \
+            --output text)
+          if [ -z "$BUCKET" ]; then
+            echo "::error::FrontendBucketName não encontrado nos Outputs da stack. Garanta que o deploy de infra foi executado primeiro."
+            exit 1
+          fi
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "Frontend bucket: $BUCKET"
+
+      - name: Get CloudFront Distribution ID from CloudFormation Output
+        id: cfn_cf
+        run: |
+          CF_DIST=$(aws cloudformation describe-stacks \
+            --stack-name copiloto-corporativo-stack \
+            --region us-east-1 \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" \
+            --output text | sed 's|https://||' | sed 's|/||g')
+          # Busca o ID da distribuição pelo domínio
+          CF_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?DomainName=='${CF_DIST}'].Id" \
+            --output text 2>/dev/null || echo "")
+          if [ -z "$CF_ID" ] && [ -n "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+            CF_ID="${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}"
+          fi
+          echo "distribution_id=$CF_ID" >> $GITHUB_OUTPUT
+          echo "CloudFront distribution: $CF_ID"
+
       - name: Sync Static Files to S3 Bucket
         run: |
+          BUCKET="${{ steps.cfn.outputs.bucket }}"
           # Arquivos com hash no nome (JS/CSS gerados pelo Vite) — cache longo
-          aws s3 sync src/frontend/dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} \
+          aws s3 sync src/frontend/dist/ s3://${BUCKET} \
             --delete \
             --exclude "index.html" \
             --cache-control "public, max-age=31536000, immutable"
           # index.html — sem cache para garantir versão mais recente
-          aws s3 cp src/frontend/dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
+          aws s3 cp src/frontend/dist/index.html s3://${BUCKET}/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
 
       - name: Invalidate CloudFront Cache
         run: |
+          CF_ID="${{ steps.cfn_cf.outputs.distribution_id }}"
+          if [ -z "$CF_ID" ]; then
+            echo "::warning::CloudFront distribution ID não encontrado — invalidação ignorada."
+            exit 0
+          fi
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --distribution-id "${CF_ID}" \
             --paths "/*"
