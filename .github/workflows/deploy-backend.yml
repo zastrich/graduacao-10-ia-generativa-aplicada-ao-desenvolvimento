@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/backend/**'
       - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
   # Acionado pela infra após deploy bem-sucedido (o dist compilado é lido pelo sam build da infra)
   workflow_run:
     workflows: ["Deploy Infrastructure"]
