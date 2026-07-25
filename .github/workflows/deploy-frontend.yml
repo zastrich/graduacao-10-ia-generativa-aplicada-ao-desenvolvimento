@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/frontend/**'
       - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
   # Roda automaticamente após o backend ser deployado com sucesso
   # Garante a ordem: infra → backend → frontend
   workflow_run:

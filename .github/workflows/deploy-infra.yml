@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/infrastructure/**'
       - '.github/workflows/deploy-infra.yml'
+  # Permite disparar manualmente pelo GitHub Actions UI ou gh CLI
+  workflow_dispatch:
 
 jobs:
   validate:
