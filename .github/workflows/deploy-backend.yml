@@ -6,8 +6,7 @@ on:
     paths:
       - 'src/backend/**'
       - '.github/workflows/deploy-backend.yml'
-  # Roda automaticamente após a infra ser deployada com sucesso
-  # Isso garante que as Lambdas são atualizadas sempre que a stack SAM muda
+  # Acionado pela infra após deploy bem-sucedido (o dist compilado é lido pelo sam build da infra)
   workflow_run:
     workflows: ["Deploy Infrastructure"]
     types: [completed]
@@ -48,69 +47,7 @@ jobs:
           cd src/backend
           npm run build
 
-  deploy:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4.2.0
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4.1.0
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'src/backend/package-lock.json'
-
-      - name: Install Dependencies
-        run: |
-          cd src/backend
-          npm ci
-
-      - name: Build TypeScript
-        run: |
-          cd src/backend
-          npm run build
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Setup AWS SAM CLI
-        uses: aws-actions/setup-sam@v2
-
-      - name: Cleanup stacks in bad state
-        run: |
-          # Limpa a managed stack do SAM se estiver em estado inválido
-          for STACK in "aws-sam-cli-managed-default" "copiloto-corporativo-stack"; do
-            STATUS=$(aws cloudformation describe-stacks \
-              --stack-name "$STACK" \
-              --region us-east-1 \
-              --query "Stacks[0].StackStatus" \
-              --output text 2>/dev/null || echo "DOES_NOT_EXIST")
-            echo "$STACK status: $STATUS"
-            if [[ "$STATUS" == "REVIEW_IN_PROGRESS" || "$STATUS" == "ROLLBACK_COMPLETE" || "$STATUS" == "ROLLBACK_FAILED" ]]; then
-              echo "Deletando stack $STACK ($STATUS)..."
-              aws cloudformation delete-stack --stack-name "$STACK" --region us-east-1
-              aws cloudformation wait stack-delete-complete --stack-name "$STACK" --region us-east-1
-              echo "$STACK deletada."
-            fi
-          done
-
-      - name: Package & Deploy Lambdas
-        run: |
-          cd src/infrastructure
-          sam build
-          sam deploy \
-            --resolve-s3 \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --stack-name copiloto-corporativo-stack \
-            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
-            --parameter-overrides \
-              Stage=${{ vars.DEPLOY_STAGE || 'prod' }} \
-              JwtSecret=${{ secrets.JWT_SECRET }} \
-              AllowedOrigin="${{ vars.ALLOWED_ORIGIN || '*' }}"
+  # Nota: o deploy das Lambdas é feito pela pipeline Deploy Infrastructure
+  # via sam build (CodeUri: ../backend/dist/) + sam deploy.
+  # Este job valida que o código compila corretamente antes de qualquer deploy.
+  # Manter separado evita conflito de changeset ao rodar infra e backend em paralelo.
