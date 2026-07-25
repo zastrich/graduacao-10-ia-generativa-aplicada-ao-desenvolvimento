@@ -3,6 +3,44 @@ Transform: AWS::Serverless-2016-10-31
 Description: |
   Copiloto Corporativo com IA - Infraestrutura Serverless Assistente corporativo inteligente usando AWS Bedrock (Gemma 3 4b-it)
 
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  # Sem Default — deploy falha explicitamente se não fornecido
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: >
+      Segredo usado para assinar JWTs. Obrigatório. Gere com:
+      node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+  # Parâmetro para o modelo Bedrock, usado no ARN da IAM policy
+  BedrockModelId:
+    Type: String
+    Default: google.gemma-3-4b-it
+    Description: ID do modelo Bedrock usado para inferência.
+
+  # Domínio do CloudFront (ex: d1234abcd.cloudfront.net).
+  # Usado em CORS e ALLOWED_ORIGINS. No primeiro deploy use o default '*'.
+  # Após o primeiro deploy, atualize com o valor do Output FrontendUrl.
+  AllowedOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      Origem permitida para CORS. Use '*' no primeiro deploy.
+      Após a criação do CloudFront, atualize para https://<distribuicao>.cloudfront.net
+
+Conditions:
+  # Verdadeiro quando AllowedOrigin ainda é o wildcard do primeiro deploy
+  IsWildcardOrigin: !Equals [!Ref AllowedOrigin, '*']
+
 Globals:
   Function:
     Runtime: nodejs24.x
@@ -18,34 +56,11 @@ Globals:
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_REGION: us-east-1
         JWT_SECRET: !Ref JwtSecret
-        # Task 7: ALLOWED_ORIGINS usa a URL do CloudFront para restringir CORS
-        ALLOWED_ORIGINS: !Sub https://${FrontendDistribution.DomainName}
+        # CORS: usa o parâmetro AllowedOrigin para evitar dependência circular
+        # com FrontendDistribution. Atualize para o domínio CloudFront após 1º deploy.
+        ALLOWED_ORIGINS: !Ref AllowedOrigin
     Architectures:
       - x86_64
-
-Parameters:
-  Stage:
-    Type: String
-    Default: dev
-    AllowedValues:
-      - dev
-      - staging
-      - prod
-
-  # Task 1 / Task 8: sem Default — deploy falha explicitamente se não fornecido
-  JwtSecret:
-    Type: String
-    NoEcho: true
-    MinLength: 32
-    Description: >
-      Segredo usado para assinar JWTs. Obrigatório. Gere com:
-      node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-
-  # Task 8: parâmetro para o modelo Bedrock, usado no ARN da IAM policy
-  BedrockModelId:
-    Type: String
-    Default: google.gemma-3-4b-it
-    Description: ID do modelo Bedrock usado para inferência.
 
 Resources:
   # ============================================================
@@ -56,12 +71,16 @@ Resources:
     Properties:
       Name: !Sub copiloto-api-${Stage}
       StageName: !Ref Stage
-      # Task 7: CORS restrito à origem do CloudFront
+      # CORS: usa parâmetro AllowedOrigin para evitar dependência circular.
+      # Atualize para o domínio CloudFront após o primeiro deploy.
       Cors:
         AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
         AllowHeaders: '''Content-Type,Authorization'''
-        AllowOrigin: !Sub '''https://${FrontendDistribution.DomainName}'''
-        AllowCredentials: true
+        AllowOrigin: !Sub '''${AllowedOrigin}'''
+        AllowCredentials: !If
+          - IsWildcardOrigin
+          - false
+          - true
 
   # ============================================================
   # DynamoDB Tables
@@ -302,13 +321,16 @@ Resources:
             Protection: true
             Override: true
           ContentSecurityPolicy:
-            ContentSecurityPolicy: !Sub >
+            # connect-src aponta para o padrão genérico do API Gateway na região.
+            # Não usa !Sub com CopilotoApi para evitar dependência circular.
+            # Após o primeiro deploy, atualize para o ARN específico da API se necessário.
+            ContentSecurityPolicy: >
               default-src 'self';
               script-src 'self' 'unsafe-inline';
               style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
               font-src 'self' https://fonts.gstatic.com;
               img-src 'self' data:;
-              connect-src 'self' https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com;
+              connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com;
               frame-ancestors 'none';
             Override: true
 

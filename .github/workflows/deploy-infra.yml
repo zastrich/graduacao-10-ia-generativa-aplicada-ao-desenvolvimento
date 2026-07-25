@@ -56,7 +56,30 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: Cleanup SAM managed stack if stuck
+        run: |
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name aws-sam-cli-managed-default \
+            --region us-east-1 \
+            --query "Stacks[0].StackStatus" \
+            --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          echo "SAM managed stack status: $STATUS"
+          if [[ "$STATUS" == "REVIEW_IN_PROGRESS" || "$STATUS" == "ROLLBACK_COMPLETE" || "$STATUS" == "ROLLBACK_FAILED" ]]; then
+            echo "Stack em estado inválido ($STATUS). Deletando para permitir recriação pelo SAM..."
+            aws cloudformation delete-stack \
+              --stack-name aws-sam-cli-managed-default \
+              --region us-east-1
+            aws cloudformation wait stack-delete-complete \
+              --stack-name aws-sam-cli-managed-default \
+              --region us-east-1
+            echo "Stack deletada com sucesso."
+          else
+            echo "Stack em estado válido ou inexistente — nenhuma ação necessária."
+          fi
+
       - name: Build & Deploy SAM Stack
+        env:
+          ALLOWED_ORIGIN: ${{ secrets.ALLOWED_ORIGIN || '*' }}
         run: |
           # Compila o backend antes do sam build (dist é necessário como CodeUri)
           cd src/backend
@@ -72,4 +95,5 @@ jobs:
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --parameter-overrides \
               Stage=prod \
-              JwtSecret=${{ secrets.JWT_SECRET }}
+              JwtSecret=${{ secrets.JWT_SECRET }} \
+              AllowedOrigin="${ALLOWED_ORIGIN}"
