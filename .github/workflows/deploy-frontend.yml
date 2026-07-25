@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'src/frontend/package-lock.json'
 
@@ -26,10 +26,11 @@ jobs:
           npm ci
 
       # Task 11: auditoria de segurança de dependências — bloqueia vulnerabilidades altas/críticas
+      # Usa audit-ci para suportar allowlist de advisories que não afetam este projeto
       - name: Security Audit
         run: |
           cd src/frontend
-          npm audit --audit-level=high
+          npx audit-ci --config audit-ci.jsonc
 
       - name: Build React SPA
         run: |
@@ -51,7 +52,7 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'src/frontend/package-lock.json'
 
