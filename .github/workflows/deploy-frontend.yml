@@ -6,10 +6,18 @@ on:
     paths:
       - 'src/frontend/**'
       - '.github/workflows/deploy-frontend.yml'
+  # Roda automaticamente após o backend ser deployado com sucesso
+  # Garante a ordem: infra → backend → frontend
+  workflow_run:
+    workflows: ["Deploy Backend Lambdas"]
+    types: [completed]
+    branches: [ main ]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Se acionado por workflow_run, só continua se o backend passou
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4.2.0
 

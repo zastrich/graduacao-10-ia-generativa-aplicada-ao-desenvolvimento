@@ -6,10 +6,18 @@ on:
     paths:
       - 'src/backend/**'
       - '.github/workflows/deploy-backend.yml'
+  # Roda automaticamente após a infra ser deployada com sucesso
+  # Isso garante que as Lambdas são atualizadas sempre que a stack SAM muda
+  workflow_run:
+    workflows: ["Deploy Infrastructure"]
+    types: [completed]
+    branches: [ main ]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Se acionado por workflow_run, só continua se a infra passou
+    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4.2.0
 
