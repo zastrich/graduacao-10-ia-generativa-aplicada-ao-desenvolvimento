@@ -24,7 +24,7 @@ import {
   History as HistoryIcon,
   Storage as StorageIcon,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@tanstack/react-router';
 import { fetchAdminKnowledgeBases, deleteKnowledgeBase } from '../api/client';
 import type { KnowledgeBase } from '../types';
 import { AdminKBModal } from '../components/admin/AdminKBModal';
@@ -47,7 +47,7 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!isAdminAuthenticated()) {
-      navigate('/admin/login');
+      navigate({ to: '/admin/login' });
       return;
     }
     loadData();
@@ -62,7 +62,7 @@ export const AdminDashboard: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       if (err.response?.status === 401) {
-        navigate('/admin/login');
+        navigate({ to: '/admin/login' });
       } else {
         setError('Falha ao carregar bases de conhecimento.');
       }
@@ -107,7 +107,7 @@ export const AdminDashboard: React.FC = () => {
             variant="outlined"
             color="secondary"
             startIcon={<HistoryIcon />}
-            onClick={() => navigate('/admin/logs')}
+            onClick={() => navigate({ to: '/admin/logs' })}
           >
             Logs de Conversas
           </Button>
@@ -131,7 +131,7 @@ export const AdminDashboard: React.FC = () => {
             startIcon={<LogoutIcon />}
             onClick={() => {
               removeAdminToken();
-              navigate('/admin/login');
+              navigate({ to: '/admin/login' });
             }}
           >
             Sair

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Box, Typography, Paper, CircularProgress, Alert, Button } from '@mui/material';
 import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from '@tanstack/react-router';
 import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatBubble } from '../components/chat/ChatBubble';
 import { ChatInput } from '../components/chat/ChatInput';
@@ -13,7 +13,7 @@ import {
 import type { KnowledgeBase, Message } from '../types';
 
 export const ChatPage: React.FC = () => {
-  const { slug, uuid: convId } = useParams<{ slug: string; uuid?: string }>();
+  const { slug, uuid: convId } = useParams({ strict: false }) as { slug: string; uuid?: string };
   const navigate = useNavigate();
 
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
@@ -99,7 +99,7 @@ export const ChatPage: React.FC = () => {
       // Se foi iniciada uma nova conversa, atualiza a URL sem recarregar a página
       if (!activeConvId && res.conversationId) {
         setActiveConvId(res.conversationId);
-        navigate(`/${slug}/chat/${res.conversationId}`, { replace: true });
+        navigate({ to: '/$slug/chat/$uuid', params: { slug: slug!, uuid: res.conversationId }, replace: true });
       }
     } catch (err: any) {
       console.error(err);
@@ -129,7 +129,7 @@ export const ChatPage: React.FC = () => {
         <Alert severity="error" sx={{ mb: 2 }}>
           {error || 'Base de conhecimento não encontrada.'}
         </Alert>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')}>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate({ to: '/' })}>
           Voltar para Home
         </Button>
       </Box>

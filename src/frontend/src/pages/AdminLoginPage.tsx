@@ -10,7 +10,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { AdminPanelSettings as AdminIcon } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@tanstack/react-router';
 import { adminLogin, adminRegister, fetchAuthStatus } from '../api/client';
 import { setAdminToken } from '../utils/uid';
 
@@ -50,7 +50,7 @@ export const AdminLoginPage: React.FC = () => {
       }
 
       setAdminToken(res.token);
-      navigate('/admin');
+      navigate({ to: '/admin' });
     } catch (err: any) {
       console.error(err);
       setError(

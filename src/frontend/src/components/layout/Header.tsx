@@ -15,7 +15,7 @@ import {
   Logout as LogoutIcon,
   Menu as MenuIcon,
 } from '@mui/icons-material';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { getAdminToken, removeAdminToken } from '../../utils/uid';
 
 interface HeaderProps {
@@ -24,12 +24,12 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const navigate = useNavigate();
-  const location = useLocation();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdminLoggedIn = !!getAdminToken();
 
   const handleLogout = () => {
     removeAdminToken();
-    navigate('/admin/login');
+    navigate({ to: '/admin/login' });
   };
 
   return (
@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           )}
 
           <Box
-            onClick={() => navigate('/')}
+            onClick={() => navigate({ to: '/' })}
             sx={{
               display: 'flex',
               alignItems: 'center',
@@ -81,8 +81,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <Button
             color="inherit"
             startIcon={<HomeIcon />}
-            onClick={() => navigate('/')}
-            sx={{ opacity: location.pathname === '/' ? 1 : 0.7 }}
+            onClick={() => navigate({ to: '/' })}
+            sx={{ opacity: pathname === '/' ? 1 : 0.7 }}
           >
             Bases
           </Button>
@@ -90,10 +90,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           {isAdminLoggedIn ? (
             <>
               <Button
-                variant={location.pathname.startsWith('/admin') && location.pathname !== '/admin/login' ? 'contained' : 'outlined'}
+                variant={pathname.startsWith('/admin') && pathname !== '/admin/login' ? 'contained' : 'outlined'}
                 color="primary"
                 startIcon={<AdminIcon />}
-                onClick={() => navigate('/admin')}
+                onClick={() => navigate({ to: '/admin' })}
                 size="small"
               >
                 Painel Admin
@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               variant="outlined"
               color="secondary"
               startIcon={<AdminIcon />}
-              onClick={() => navigate('/admin/login')}
+              onClick={() => navigate({ to: '/admin/login' })}
               size="small"
             >
               Área Admin

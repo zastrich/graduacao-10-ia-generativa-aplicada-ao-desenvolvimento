@@ -16,7 +16,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Chat as ChatIcon,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@tanstack/react-router';
 import { fetchAdminLogs } from '../api/client';
 import type { Conversation } from '../types';
 
@@ -39,7 +39,7 @@ export const AdminLogsPage: React.FC = () => {
   return (
     <Box sx={{ py: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/admin')} color="inherit">
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate({ to: '/admin' })} color="inherit">
           Voltar
         </Button>
         <Typography variant="h4" sx={{ fontWeight: 800, color: '#F8FAFC' }}>

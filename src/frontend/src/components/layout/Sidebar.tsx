@@ -19,7 +19,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   Psychology as KnowledgeIcon,
 } from '@mui/icons-material';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { fetchUserConversations, fetchPublicKnowledgeBases } from '../../api/client';
 import type { Conversation, KnowledgeBase } from '../../types';
 
@@ -31,7 +31,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temporary' }) => {
   const navigate = useNavigate();
-  const { slug, uuid: activeConvId } = useParams<{ slug?: string; uuid?: string }>();
+  const { slug, uuid: activeConvId } = useParams({ strict: false }) as { slug?: string; uuid?: string };
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -60,9 +60,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
   const handleNewChat = (kbSlug?: string) => {
     const targetSlug = kbSlug || slug || knowledgeBases[0]?.slug;
     if (targetSlug) {
-      navigate(`/${targetSlug}/chat`);
+      navigate({ to: '/$slug/chat', params: { slug: targetSlug } });
     } else {
-      navigate('/');
+      navigate({ to: '/' });
     }
     if (variant === 'temporary') onClose();
   };
@@ -144,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
                   key={conv.id}
                   selected={isActive}
                   onClick={() => {
-                    navigate(`/${kbSlug}/chat/${conv.id}`);
+                    navigate({ to: '/$slug/chat/$uuid', params: { slug: kbSlug, uuid: conv.id } });
                     if (variant === 'temporary') onClose();
                   }}
                   sx={{

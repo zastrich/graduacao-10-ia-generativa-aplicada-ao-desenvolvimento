@@ -19,7 +19,7 @@ import {
   SmartToy as BotIcon,
   ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@tanstack/react-router';
 import { fetchPublicKnowledgeBases } from '../api/client';
 import type { KnowledgeBase } from '../types';
 
@@ -182,7 +182,7 @@ export const HomePage: React.FC = () => {
                   variant="contained"
                   color="primary"
                   endIcon={<ArrowForwardIcon />}
-                  onClick={() => navigate(`/${kb.slug}/chat`)}
+                  onClick={() => navigate({ to: `/${kb.slug}/chat` as any })}
                   sx={{
                     py: 1.2,
                     background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
