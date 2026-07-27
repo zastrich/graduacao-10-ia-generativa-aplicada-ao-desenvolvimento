@@ -36,16 +36,22 @@ export const bedrockService = {
     // Monta system prompt com contexto RAG
     const systemContent = buildSystemContent(context, bedrockConfig);
 
-    // Formato Messages API (usado pelo Gemma 3 no Bedrock)
+    // Formato OpenAI-compatible (usado pelo Gemma 3 no Bedrock)
+    const messages: Array<{role: string; content: string}> = [];
+
+    // System prompt como primeira mensagem
+    if (systemContent.trim()) {
+      messages.push({ role: 'system', content: systemContent });
+    }
+
+    // Mensagem do usuário
+    messages.push({ role: 'user', content: sanitizedPrompt });
+
     const requestBody = {
-      messages: [
-        { role: 'user', content: `<user_input>\n${sanitizedPrompt}\n</user_input>` },
-      ],
-      system: systemContent,
+      messages,
       max_tokens: bedrockConfig.maxTokens || 2048,
       temperature: bedrockConfig.temperature,
       top_p: bedrockConfig.topP,
-      top_k: bedrockConfig.topK,
     };
 
     const response = await client.send(new InvokeModelCommand({
@@ -57,8 +63,9 @@ export const bedrockService = {
 
     const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
-    // Gemma 3 Messages API retorna em content[0].text ou output.message.content[0].text
+    // Gemma 3 retorna no formato OpenAI-compatible (chat.completion)
     const content =
+      responseBody.choices?.[0]?.message?.content ||
       responseBody.content?.[0]?.text ||
       responseBody.output?.message?.content?.[0]?.text ||
       responseBody.generated_text ||
@@ -69,8 +76,8 @@ export const bedrockService = {
     return {
       content,
       usage: {
-        inputTokens: responseBody.usage?.input_tokens || 0,
-        outputTokens: responseBody.usage?.output_tokens || 0,
+        inputTokens: responseBody.usage?.prompt_tokens || responseBody.usage?.input_tokens || 0,
+        outputTokens: responseBody.usage?.completion_tokens || responseBody.usage?.output_tokens || 0,
       },
     };
   },

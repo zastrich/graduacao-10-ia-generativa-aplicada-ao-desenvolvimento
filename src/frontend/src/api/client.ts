@@ -64,7 +64,7 @@ export async function sendChatMessage(
   conversationId?: string
 ): Promise<{ response: string; conversationId: string; title?: string }> {
   const userUid = getUserUid();
-  const res = await apiClient.post<{ response: string; conversationId: string; title?: string }>(
+  const res = await apiClient.post(
     `/chat/${slug}`,
     {
       message,
@@ -72,7 +72,13 @@ export async function sendChatMessage(
       userUid,
     }
   );
-  return res.data;
+  // Backend retorna { conversationId, message: { content, role, ... } }
+  const data = res.data as any;
+  return {
+    response: data.message?.content || data.response || '',
+    conversationId: data.conversationId,
+    title: data.title,
+  };
 }
 
 export async function fetchUserConversations(): Promise<Conversation[]> {
@@ -83,8 +89,16 @@ export async function fetchUserConversations(): Promise<Conversation[]> {
 
 export async function fetchConversationDetails(conversationId: string): Promise<Conversation> {
   const userUid = getUserUid();
-  const res = await apiClient.get<Conversation>(`/conversations/${userUid}/${conversationId}`);
-  return res.data;
+  const res = await apiClient.get(`/conversations/${userUid}/${conversationId}`);
+  const data = res.data as any;
+  // Backend messages have {role, content, createdAt} - map to frontend {sender, content, timestamp, id}
+  const messages = (data.messages || []).map((msg: any, i: number) => ({
+    id: msg.id || `msg_${i}_${msg.createdAt}`,
+    sender: msg.role || msg.sender || 'assistant',
+    content: msg.content,
+    timestamp: msg.createdAt || msg.timestamp,
+  }));
+  return { ...data, messages };
 }
 
 // --- Admin Auth Endpoints ---
