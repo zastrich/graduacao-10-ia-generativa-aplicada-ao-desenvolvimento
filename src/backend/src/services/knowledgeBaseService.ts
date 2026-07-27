@@ -100,13 +100,6 @@ export const knowledgeBaseService = {
     // Upload original para S3
     await s3Service.putObject(s3Key, fileContent, contentType);
 
-    // Faz parsing e salva texto extraído no S3 (para RAG)
-    const parsedContent = await parseFileContent(fileContent, fileName);
-    if (parsedContent) {
-      const parsedKey = `${kbId}/${fileId}-${fileName}.parsed.txt`;
-      await s3Service.putObject(parsedKey, Buffer.from(parsedContent, 'utf-8'), 'text/plain');
-    }
-
     const file: KnowledgeBaseFile = {
       id: fileId,
       name: fileName,
@@ -127,9 +120,7 @@ export const knowledgeBaseService = {
     const file = kb.files.find((f) => f.id === fileId);
     if (!file) throw { statusCode: 404, message: 'Arquivo não encontrado' };
 
-    // Remove original + parsed do S3
     await s3Service.deleteObject(file.s3Key);
-    await s3Service.deleteObject(`${file.s3Key}.parsed.txt`).catch(() => {});
 
     const updatedFiles = kb.files.filter((f) => f.id !== fileId);
     await dynamoService.update(TABLE, { id: kbId }, {
@@ -178,22 +169,24 @@ export const knowledgeBaseService = {
   },
 
   /**
-   * Monta o contexto RAG para a inferência — busca trechos relevantes dos documentos no S3.
+   * Monta o contexto RAG para a inferência — lê e parseia documentos originais do S3.
    */
   async buildContext(kbId: string, query: string): Promise<string> {
     const kb = await this.getById(kbId);
     const allContent: string[] = [];
 
-    // Coleta conteúdo parseado dos arquivos (lê do S3)
+    // Lê e parseia cada arquivo original do S3
     for (const file of kb.files) {
       try {
-        const parsedKey = `${file.s3Key}.parsed.txt`;
-        const content = await s3Service.getObject(parsedKey);
+        const content = await s3Service.getObject(file.s3Key);
         if (content) {
-          allContent.push(`[Arquivo: ${file.name}]\n${content.toString('utf-8')}`);
+          const parsed = await parseFileContent(content, file.name);
+          if (parsed) {
+            allContent.push(`[Arquivo: ${file.name}]\n${parsed}`);
+          }
         }
       } catch {
-        // Arquivo parsed pode não existir (upload antigo), ignora
+        // Se falhar ao ler, ignora e segue
       }
     }
 
@@ -209,7 +202,6 @@ export const knowledgeBaseService = {
     }
 
     // RAG simples: busca por similaridade textual (keyword matching)
-    // Em produção, usar embeddings + vector search
     const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
     
     const scoredContent = allContent.map((content) => {
