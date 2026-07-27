@@ -20,12 +20,22 @@ async function getAWSClient() {
   return bedrockClient;
 }
 
-export const bedrockService = {
-  async invoke(prompt: string, context: string, bedrockConfig: BedrockConfig): Promise<BedrockResponse> {
-    // Sanitiza o input do usuário antes de qualquer processamento
-    const sanitizedPrompt = sanitizeUserInput(prompt);
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
-    const params: BedrockInvokeParams = { prompt: sanitizedPrompt, context, config: bedrockConfig };
+export const bedrockService = {
+  async invoke(
+    currentMessage: string,
+    context: string,
+    bedrockConfig: BedrockConfig,
+    history: ChatMessage[] = []
+  ): Promise<BedrockResponse> {
+    // Sanitiza o input do usuário antes de qualquer processamento
+    const sanitizedMessage = sanitizeUserInput(currentMessage);
+
+    const params: BedrockInvokeParams = { prompt: sanitizedMessage, context, config: bedrockConfig };
 
     if (config.isLocal) {
       return mockBedrock.invokeModel(params);
@@ -44,8 +54,16 @@ export const bedrockService = {
       messages.push({ role: 'system', content: systemContent });
     }
 
-    // Mensagem do usuário
-    messages.push({ role: 'user', content: sanitizedPrompt });
+    // Histórico da conversa (mensagens anteriores)
+    for (const msg of history) {
+      messages.push({
+        role: msg.role,
+        content: msg.role === 'user' ? sanitizeUserInput(msg.content) : msg.content,
+      });
+    }
+
+    // Mensagem atual do usuário
+    messages.push({ role: 'user', content: sanitizedMessage });
 
     const requestBody = {
       messages,

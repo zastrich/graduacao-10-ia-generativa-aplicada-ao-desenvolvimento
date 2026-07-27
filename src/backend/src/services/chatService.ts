@@ -5,7 +5,7 @@
 import { v4 as uuid } from 'uuid';
 import { config } from '../utils/config';
 import { dynamoService } from './dynamoService';
-import { bedrockService } from './bedrockService';
+import { bedrockService, ChatMessage } from './bedrockService';
 import { knowledgeBaseService } from './knowledgeBaseService';
 import { Conversation, Message, ChatRequest, ChatResponse } from '../utils/types';
 
@@ -51,24 +51,20 @@ export const chatService = {
 
     // Busca histórico recente da conversa (últimas 10 mensagens para contexto)
     const history = await dynamoService.query(MESSAGES_TABLE, { conversationId });
-    const recentHistory = history.slice(-10) as Message[];
+    const recentHistory = (history as Message[])
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .slice(-10);
 
     // Monta contexto RAG da base de conhecimento
     const ragContext = await knowledgeBaseService.buildContext(kb.id, request.message);
 
-    // Monta prompt com histórico
-    let fullPrompt = '';
-    if (recentHistory.length > 1) {
-      fullPrompt += 'Histórico da conversa:\n';
-      for (const msg of recentHistory.slice(0, -1)) { // exclui a última (que é a atual)
-        fullPrompt += `${msg.role === 'user' ? 'Usuário' : 'Assistente'}: ${msg.content}\n`;
-      }
-      fullPrompt += '\n';
-    }
-    fullPrompt += `Pergunta atual: ${request.message}`;
+    // Monta histórico no formato de messages (exclui a mensagem atual que acabou de ser salva)
+    const chatHistory: ChatMessage[] = recentHistory
+      .filter((msg) => msg.createdAt !== userMessage.createdAt) // exclui a msg atual
+      .map((msg) => ({ role: msg.role, content: msg.content }));
 
-    // Invoca Bedrock
-    const bedrockResponse = await bedrockService.invoke(fullPrompt, ragContext, kb.config);
+    // Invoca Bedrock com histórico completo
+    const bedrockResponse = await bedrockService.invoke(request.message, ragContext, kb.config, chatHistory);
 
     // Salva resposta do assistente
     const assistantMessage: Message = {
