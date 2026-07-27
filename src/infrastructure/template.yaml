@@ -37,9 +37,53 @@ Parameters:
       Origem permitida para CORS. Use '*' no primeiro deploy.
       Após a criação do CloudFront, atualize para https://<distribuicao>.cloudfront.net
 
+  # -------------------------------------------------------------------
+  # Domínio e Route53
+  # -------------------------------------------------------------------
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: >
+      ID da Hosted Zone no Route53 (ex: Z0851491YVAOB1BFAMS).
+      Se vazio, os recursos de DNS (Route53 records) não serão criados.
+
+  WebDomain:
+    Type: String
+    Default: ''
+    Description: >
+      Subdomínio para o frontend (ex: copiloto-corporativo.code200.com.br).
+      Se vazio, o CloudFront ficará acessível apenas pelo domínio *.cloudfront.net.
+
+  ApiDomain:
+    Type: String
+    Default: ''
+    Description: >
+      Subdomínio para a API (ex: api.copiloto-corporativo.code200.com.br).
+      Se vazio, a API ficará acessível apenas pelo endpoint padrão do API Gateway.
+
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: >
+      ARN do certificado ACM (us-east-1) que cobre os domínios WebDomain e ApiDomain.
+      Para domínios *.example.com, use um certificado wildcard.
+      Se vazio, custom domains não serão configurados.
+
 Conditions:
   # Verdadeiro quando AllowedOrigin ainda é o wildcard do primeiro deploy
   IsWildcardOrigin: !Equals [!Ref AllowedOrigin, '*']
+  # Verdadeiro quando temos configuração de domínio customizado completa
+  HasCustomDomain: !And
+    - !Not [!Equals [!Ref HostedZoneId, '']]
+    - !Not [!Equals [!Ref CertificateArn, '']]
+  HasWebDomain: !And
+    - !Not [!Equals [!Ref WebDomain, '']]
+    - !Not [!Equals [!Ref HostedZoneId, '']]
+    - !Not [!Equals [!Ref CertificateArn, '']]
+  HasApiDomain: !And
+    - !Not [!Equals [!Ref ApiDomain, '']]
+    - !Not [!Equals [!Ref HostedZoneId, '']]
+    - !Not [!Equals [!Ref CertificateArn, '']]
 
 Globals:
   Function:
@@ -54,7 +98,7 @@ Globals:
         USERS_TABLE: !Ref UsersTable
         KNOWLEDGE_BUCKET: !Ref KnowledgeBucket
         BEDROCK_MODEL_ID: !Ref BedrockModelId
-        BEDROCK_REGION: us-east-1
+        BEDROCK_REGION: !Ref AWS::Region
         JWT_SECRET: !Ref JwtSecret
         # CORS: usa o parâmetro AllowedOrigin para evitar dependência circular
         # com FrontendDistribution. Atualize para o domínio CloudFront após 1º deploy.
@@ -321,8 +365,7 @@ Resources:
             Protection: true
             Override: true
           ContentSecurityPolicy:
-            # CSP em uma única linha — CloudFront rejeita valores com newlines (illegal characters)
-            ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com; frame-ancestors 'none';"
+            ContentSecurityPolicy: !Sub "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.execute-api.${AWS::Region}.amazonaws.com; frame-ancestors 'none';"
             Override: true
 
   # CloudFront Distribution — CDN + HTTPS + SPA fallback + Security Headers
@@ -333,6 +376,11 @@ Resources:
         Enabled: true
         Comment: !Sub Copiloto Frontend - ${Stage}
         DefaultRootObject: index.html
+        # Custom domain aliases (condicional)
+        Aliases: !If
+          - HasWebDomain
+          - - !Ref WebDomain
+          - !Ref AWS::NoValue
         Origins:
           - Id: FrontendS3Origin
             DomainName: !GetAtt FrontendBucket.RegionalDomainName
@@ -351,6 +399,7 @@ Resources:
           CachedMethods:
             - GET
             - HEAD
+          Compress: true
         # Redireciona erros 403/404 para index.html (SPA routing)
         CustomErrorResponses:
           - ErrorCode: 403
@@ -363,6 +412,13 @@ Resources:
             ErrorCachingMinTTL: 0
         HttpVersion: http2and3
         PriceClass: PriceClass_100
+        # Certificado SSL customizado (condicional)
+        ViewerCertificate: !If
+          - HasWebDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
 
   # Bucket Policy — nega requests sem SSL ao KnowledgeBucket
   KnowledgeBucketPolicy:
@@ -635,17 +691,76 @@ Resources:
             Path: /admin/logs
             Method: GET
 
+  # ============================================================
+  # API Gateway Custom Domain
+  # ============================================================
+  ApiCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Condition: HasApiDomain
+    Properties:
+      DomainName: !Ref ApiDomain
+      RegionalCertificateArn: !Ref CertificateArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  ApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Condition: HasApiDomain
+    Properties:
+      DomainName: !Ref ApiCustomDomain
+      RestApiId: !Ref CopilotoApi
+      Stage: !Ref Stage
+
+  # ============================================================
+  # Route53 DNS Records
+  # ============================================================
+  WebDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasWebDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref WebDomain
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt FrontendDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront global hosted zone ID (fixo)
+        EvaluateTargetHealth: false
+
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasApiDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref ApiDomain
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+        EvaluateTargetHealth: false
+
 # ============================================================
 # Outputs
 # ============================================================
 Outputs:
   ApiUrl:
-    Description: URL da API Gateway
+    Description: URL da API Gateway (endpoint padrão)
     Value: !Sub https://${CopilotoApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/
+
+  ApiCustomUrl:
+    Description: URL da API com domínio customizado
+    Condition: HasApiDomain
+    Value: !Sub https://${ApiDomain}/
 
   FrontendUrl:
     Description: URL do Frontend (CloudFront)
     Value: !Sub https://${FrontendDistribution.DomainName}
+
+  FrontendCustomUrl:
+    Description: URL do Frontend com domínio customizado
+    Condition: HasWebDomain
+    Value: !Sub https://${WebDomain}
 
   KnowledgeBucketName:
     Description: Nome do bucket de conhecimento
@@ -658,3 +773,7 @@ Outputs:
   LogsBucketName:
     Description: Nome do bucket de logs de acesso S3
     Value: !Ref LogsBucket
+
+  CloudFrontDistributionId:
+    Description: ID da distribuição CloudFront
+    Value: !Ref FrontendDistribution
