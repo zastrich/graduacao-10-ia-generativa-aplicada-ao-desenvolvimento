@@ -61,8 +61,12 @@ async function uploadFile(kbId: string, event: APIGatewayProxyEvent, origin?: st
     return badRequest('fileName e fileContent (base64) são obrigatórios', origin);
   }
 
-  // Sanitiza o nome do arquivo contra path traversal
-  const safeFileName = parsed.fileName.replace(/[/\\..]+/g, '_').substring(0, 255);
+  // Sanitiza o nome do arquivo contra path traversal (mantém pontos simples para extensão)
+  const safeFileName = parsed.fileName
+    .replace(/\.\./g, '_')          // remove sequências ..
+    .replace(/[/\\]/g, '_')         // remove separadores de path
+    .replace(/[^\w.\-\s]/g, '_')    // mantém apenas alfanuméricos, ponto, hífen, espaço
+    .substring(0, 255);
 
   let fileBuffer: Buffer;
   try {
