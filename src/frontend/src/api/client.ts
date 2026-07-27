@@ -84,7 +84,12 @@ export async function sendChatMessage(
 export async function fetchUserConversations(): Promise<Conversation[]> {
   const userUid = getUserUid();
   const res = await apiClient.get<Conversation[]>(`/conversations/${userUid}`);
-  return res.data;
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const userUid = getUserUid();
+  await apiClient.delete(`/conversations/${userUid}/${conversationId}`);
 }
 
 export async function fetchConversationDetails(conversationId: string): Promise<Conversation> {

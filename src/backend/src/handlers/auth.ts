@@ -4,6 +4,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { userService } from '../services/userService';
+import { requireAuth } from '../utils/auth';
 import { success, badRequest, forbidden, error, corsPreflightResponse } from '../utils/response';
 import { LoginRequest, RegisterRequest } from '../utils/types';
 import { authRateLimiter, RATE_LIMITS, getClientIp } from '../utils/rateLimiter';
@@ -80,12 +81,6 @@ async function login(event: APIGatewayProxyEvent, origin?: string): Promise<APIG
 }
 
 async function register(event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
-  // Verifica first-run: registro só é permitido se não houver nenhum usuário
-  const hasUser = await userService.hasAnyUser();
-  if (hasUser) {
-    return forbidden('Registro não permitido. Contate o administrador da plataforma.', origin);
-  }
-
   const body = JSON.parse(event.body || '{}') as RegisterRequest;
 
   if (!body.email || !body.password || !body.name) {
@@ -95,6 +90,16 @@ async function register(event: APIGatewayProxyEvent, origin?: string): Promise<A
   // Senha mínima de 12 caracteres para conta administrativa
   if (body.password.length < 12) {
     return badRequest('A senha deve ter no mínimo 12 caracteres', origin);
+  }
+
+  // Se já existem usuários, exige autenticação de admin para criar novos
+  const hasUser = await userService.hasAnyUser();
+  if (hasUser) {
+    try {
+      requireAuth(event);
+    } catch {
+      return forbidden('Registro requer autenticação de administrador.', origin);
+    }
   }
 
   const result = await userService.register(body.email, body.password, body.name);

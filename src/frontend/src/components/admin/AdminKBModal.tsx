@@ -47,12 +47,13 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       setName(editingKb.name || '');
       setSlug(editingKb.slug || '');
       setDescription(editingKb.description || '');
-      const cfg = editingKb.bedrockConfig;
-      setTemperature(cfg?.temperature ?? 0.7);
-      setTopP(cfg?.top_p ?? 0.9);
-      setTopK(cfg?.top_k ?? 50);
-      setMaxTokens((cfg as any)?.maxTokens ?? 2048);
-      setSystemPrompt((cfg as any)?.systemPrompt || DEFAULT_SYSTEM_PROMPT);
+      // Backend stores as 'config', frontend type shows as 'bedrockConfig'
+      const cfg = (editingKb as any).config || editingKb.bedrockConfig || {};
+      setTemperature(cfg.temperature ?? 0.7);
+      setTopP(cfg.topP ?? cfg.top_p ?? 0.9);
+      setTopK(cfg.topK ?? cfg.top_k ?? 50);
+      setMaxTokens(cfg.maxTokens ?? 2048);
+      setSystemPrompt(cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     } else {
       setName('');
       setSlug('');

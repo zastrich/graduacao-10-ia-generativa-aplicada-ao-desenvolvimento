@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Drawer,
   Box,
   Typography,
   List,
@@ -9,27 +8,22 @@ import {
   ListItemText,
   Divider,
   Button,
-  IconButton,
-  Chip,
   Skeleton,
 } from '@mui/material';
 import {
   Chat as ChatIcon,
   Add as AddIcon,
-  ChevronLeft as ChevronLeftIcon,
   Psychology as KnowledgeIcon,
+  AdminPanelSettings as AdminIcon,
+  Logout as LogoutIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { fetchUserConversations, fetchPublicKnowledgeBases } from '../../api/client';
+import { fetchUserConversations, fetchPublicKnowledgeBases, deleteConversation } from '../../api/client';
+import { isAdminAuthenticated, removeAdminToken } from '../../utils/uid';
 import type { Conversation, KnowledgeBase } from '../../types';
 
-interface SidebarProps {
-  open: boolean;
-  onClose: () => void;
-  variant?: 'permanent' | 'persistent' | 'temporary';
-}
-
-export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temporary' }) => {
+export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const { slug, uuid: activeConvId } = useParams({ strict: false }) as { slug?: string; uuid?: string };
 
@@ -44,18 +38,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
         fetchUserConversations().catch(() => []),
         fetchPublicKnowledgeBases().catch(() => []),
       ]);
-      setConversations(convs);
-      setKnowledgeBases(kbs);
+      setConversations(Array.isArray(convs) ? convs : []);
+      setKnowledgeBases(Array.isArray(kbs) ? kbs : []);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (open) {
-      loadData();
-    }
-  }, [open, activeConvId]);
+    loadData();
+  }, [activeConvId]);
 
   const handleNewChat = (kbSlug?: string) => {
     const targetSlug = kbSlug || slug || knowledgeBases[0]?.slug;
@@ -64,40 +56,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
     } else {
       navigate({ to: '/' });
     }
-    if (variant === 'temporary') onClose();
   };
 
+  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Excluir esta conversa?')) return;
+    try {
+      await deleteConversation(convId);
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      if (activeConvId === convId) {
+        navigate({ to: '/' });
+      }
+    } catch (err) {
+      console.error('Erro ao excluir conversa:', err);
+    }
+  };
+
+  const isAdmin = isAdminAuthenticated();
+
   return (
-    <Drawer
-      anchor="left"
-      open={open}
-      onClose={onClose}
-      variant={variant}
-      slotProps={{
-        paper: {
-          sx: {
-            width: 280,
-            backgroundColor: '#0F172A',
-            color: '#F8FAFC',
-            display: 'flex',
-            flexDirection: 'column',
-            justify: 'space-between',
-          },
-        },
+    <Box
+      sx={{
+        width: 260,
+        minWidth: 260,
+        height: '100vh',
+        position: 'sticky',
+        top: 0,
+        backgroundColor: '#0F172A',
+        color: '#F8FAFC',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRight: '1px solid rgba(255,255,255,0.06)',
+        overflowY: 'hidden',
       }}
     >
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, textTransform: 'uppercase', color: '#94A3B8', letterSpacing: 1 }}>
-          Navegação
-        </Typography>
-        {variant === 'temporary' && (
-          <IconButton onClick={onClose} size="small" sx={{ color: '#94A3B8' }}>
-            <ChevronLeftIcon />
-          </IconButton>
-        )}
-      </Box>
-
-      <Box sx={{ px: 2, mb: 2 }}>
+      {/* Header */}
+      <Box sx={{ p: 2, pt: 2.5 }}>
         <Button
           fullWidth
           variant="contained"
@@ -116,17 +110,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
-      {/* Histórico de Conversas */}
+      {/* Content - scrollable */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: 1, py: 1 }}>
         <Typography variant="caption" sx={{ px: 1.5, py: 0.5, display: 'block', color: '#64748B', fontWeight: 600 }}>
-          HISTÓRICO RECENTE
+          HISTORICO RECENTE
         </Typography>
 
         {loading ? (
           <Box sx={{ px: 1.5, py: 1 }}>
             <Skeleton variant="text" width="90%" height={24} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
             <Skeleton variant="text" width="70%" height={24} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
-            <Skeleton variant="text" width="80%" height={24} sx={{ bgcolor: 'rgba(255,255,255,0.05)' }} />
           </Box>
         ) : conversations.length === 0 ? (
           <Typography variant="caption" sx={{ px: 1.5, py: 1, display: 'block', color: '#475569', fontStyle: 'italic' }}>
@@ -145,27 +138,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
                   selected={isActive}
                   onClick={() => {
                     navigate({ to: '/$slug/chat/$uuid', params: { slug: kbSlug, uuid: conv.id } });
-                    if (variant === 'temporary') onClose();
                   }}
                   sx={{
                     borderRadius: 2,
                     mb: 0.5,
                     backgroundColor: isActive ? 'rgba(124, 58, 237, 0.2)' : 'transparent',
                     borderLeft: isActive ? '3px solid #7C3AED' : '3px solid transparent',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                    },
+                    '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.04)' },
+                    '&:hover .delete-btn': { opacity: 1 },
+                    pr: 1,
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: 32, color: isActive ? '#A78BFA' : '#64748B' }}>
                     <ChatIcon fontSize="small" />
                   </ListItemIcon>
                   <ListItemText
-                    primary={conv.title || 'Conversa sem título'}
+                    primary={conv.title || 'Conversa sem titulo'}
                     slotProps={{
                       primary: {
                         sx: {
-                          fontSize: '0.85rem',
+                          fontSize: '0.8rem',
                           fontWeight: isActive ? 600 : 400,
                           color: isActive ? '#F8FAFC' : '#CBD5E1',
                         },
@@ -173,6 +165,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
                       },
                     }}
                   />
+                  <Box
+                    className="delete-btn"
+                    component="span"
+                    onClick={(e) => handleDeleteConversation(conv.id, e)}
+                    sx={{ opacity: 0, cursor: 'pointer', color: '#EF4444', display: 'flex', transition: 'opacity 0.2s' }}
+                  >
+                    <DeleteIcon sx={{ fontSize: 16 }} />
+                  </Box>
                 </ListItemButton>
               );
             })}
@@ -181,9 +181,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
 
         <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.06)' }} />
 
-        {/* Bases de Conhecimento */}
         <Typography variant="caption" sx={{ px: 1.5, py: 0.5, display: 'block', color: '#64748B', fontWeight: 600 }}>
-          BASES DISPONÍVEIS
+          BASES DISPONIVEIS
         </Typography>
 
         <List disablePadding>
@@ -204,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
                 primary={kb.name}
                 secondary={`${kb.fileCount} fonte(s)`}
                 slotProps={{
-                  primary: { sx: { fontSize: '0.85rem', color: '#E2E8F0' }, noWrap: true },
+                  primary: { sx: { fontSize: '0.8rem', color: '#E2E8F0' }, noWrap: true },
                   secondary: { sx: { fontSize: '0.7rem', color: '#64748B' } },
                 }}
               />
@@ -213,12 +212,40 @@ export const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant = 'temp
         </List>
       </Box>
 
-      <Box sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="caption" sx={{ color: '#475569' }}>
-          Copiloto v1.0 • Local Mock
+      {/* Footer - admin + version */}
+      <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.06)', p: 1.5 }}>
+        <ListItemButton
+          onClick={() => navigate({ to: isAdmin ? '/admin' : '/admin/login' })}
+          sx={{ borderRadius: 2, mb: 0.5, py: 0.8 }}
+        >
+          <ListItemIcon sx={{ minWidth: 32, color: '#A78BFA' }}>
+            <AdminIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Area Admin"
+            slotProps={{ primary: { sx: { fontSize: '0.8rem', color: '#CBD5E1' } } }}
+          />
+        </ListItemButton>
+
+        {isAdmin && (
+          <ListItemButton
+            onClick={() => { removeAdminToken(); navigate({ to: '/' }); }}
+            sx={{ borderRadius: 2, mb: 0.5, py: 0.8 }}
+          >
+            <ListItemIcon sx={{ minWidth: 32, color: '#EF4444' }}>
+              <LogoutIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary="Sair (Admin)"
+              slotProps={{ primary: { sx: { fontSize: '0.8rem', color: '#94A3B8' } } }}
+            />
+          </ListItemButton>
+        )}
+
+        <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', color: '#475569', mt: 1 }}>
+          Copiloto v1.0
         </Typography>
-        <Chip label="ONLINE" size="small" color="success" sx={{ height: 20, fontSize: '0.65rem' }} />
       </Box>
-    </Drawer>
+    </Box>
   );
 };

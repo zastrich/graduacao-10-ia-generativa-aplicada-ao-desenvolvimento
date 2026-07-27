@@ -661,9 +661,9 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: handlers/conversations.handler
       Policies:
-        - DynamoDBReadPolicy:
+        - DynamoDBCrudPolicy:
             TableName: !Ref ConversationsTable
-        - DynamoDBReadPolicy:
+        - DynamoDBCrudPolicy:
             TableName: !Ref MessagesTable
       Events:
         ListByUser:
@@ -678,6 +678,12 @@ Resources:
             RestApiId: !Ref CopilotoApi
             Path: /conversations/{uid}/{conversationId}
             Method: GET
+        DeleteConversation:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /conversations/{uid}/{conversationId}
+            Method: DELETE
 
   # --- Public Knowledge Bases ---
   PublicKnowledgeBasesFunction:

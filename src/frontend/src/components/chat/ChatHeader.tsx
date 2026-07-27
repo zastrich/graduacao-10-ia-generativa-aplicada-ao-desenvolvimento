@@ -3,7 +3,6 @@ import { Box, Typography, Chip, Tooltip, Paper } from '@mui/material';
 import {
   Folder as FolderIcon,
   Update as UpdateIcon,
-  Tune as TuneIcon,
   CheckCircle as TrainedIcon,
 } from '@mui/icons-material';
 import type { KnowledgeBase } from '../../types';
@@ -62,19 +61,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ knowledgeBase }) => {
           />
         </Tooltip>
 
-        <Tooltip title="Data do último treinamento / atualização dos dados">
+        <Tooltip title="Data do ultimo treinamento / atualizacao dos dados">
           <Chip
             icon={<UpdateIcon sx={{ fontSize: 16 }} />}
             label={formattedDate}
             sx={{ backgroundColor: 'rgba(124, 58, 237, 0.15)', color: '#A78BFA', border: '1px solid rgba(124, 58, 237, 0.3)' }}
-          />
-        </Tooltip>
-
-        <Tooltip title={`Configuração do Bedrock: Temp=${knowledgeBase.bedrockConfig?.temperature ?? 0.7}, TopP=${knowledgeBase.bedrockConfig?.top_p ?? 0.9}`}>
-          <Chip
-            icon={<TuneIcon sx={{ fontSize: 16 }} />}
-            label={`Temp: ${knowledgeBase.bedrockConfig?.temperature ?? 0.7}`}
-            sx={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', color: '#CBD5E1', border: '1px solid rgba(255, 255, 255, 0.1)' }}
           />
         </Tooltip>
       </Box>
