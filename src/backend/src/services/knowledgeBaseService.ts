@@ -178,11 +178,30 @@ export const knowledgeBaseService = {
   async retrain(kbId: string): Promise<KnowledgeBase> {
     const kb = await this.getById(kbId);
 
-    // Em uma implementação real, aqui:
-    // 1. Re-parsear todos os arquivos
-    // 2. Re-baixar todos os links
-    // 3. Reconstruir índice de busca
-    console.log(`[KnowledgeBaseService] Retreinando base: ${kb.name} (${kbId})`);
+    // Consolida todos os chunks em um único arquivo de contexto RAG no S3
+    const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: kbId }) as ParsedChunk[];
+    const allContent: string[] = [];
+
+    for (const chunk of chunks) {
+      if (chunk.content) {
+        allContent.push(`[Arquivo: ${chunk.fileName}]\n${chunk.content}`);
+      }
+    }
+
+    // Adiciona conteúdo dos links
+    for (const link of kb.links) {
+      if (link.content) {
+        allContent.push(`[Link: ${link.url}]\n${link.content}`);
+      }
+    }
+
+    const contextText = allContent.join('\n\n---\n\n');
+    const contextKey = `${kbId}/context.txt`;
+
+    // Salva o contexto consolidado no S3
+    await s3Service.putObject(contextKey, Buffer.from(contextText, 'utf-8'), 'text/plain');
+
+    console.log(`[KnowledgeBaseService] Retreinamento concluído: ${kb.name} (${kbId}) — ${allContent.length} fontes, ${contextText.length} chars`);
 
     const updated = await dynamoService.update(TABLE, { id: kbId }, {
       lastTrainedAt: new Date().toISOString(),
@@ -193,12 +212,30 @@ export const knowledgeBaseService = {
   },
 
   /**
-   * Monta o contexto RAG para a inferência — lê chunks parseados da tabela de chunks.
+   * Monta o contexto RAG para a inferência.
+   * Caminho rápido: lê context.txt pré-consolidado do S3 (gerado pelo retreino).
+   * Fallback: lê chunks individuais do DynamoDB se context.txt não existir.
    */
   async buildContext(kbId: string, query: string): Promise<string> {
-    // Busca todos os chunks dessa base de conhecimento
-    const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: kbId }) as ParsedChunk[];
+    // Tenta ler o contexto consolidado do S3 (gerado pelo retreino)
+    const contextKey = `${kbId}/context.txt`;
+    const cachedContext = await s3Service.getObject(contextKey);
 
+    if (cachedContext && cachedContext.length > 0) {
+      const fullContext = cachedContext.toString('utf-8');
+
+      // Se o contexto for pequeno, retorna inteiro
+      if (fullContext.length <= 8000) {
+        return fullContext;
+      }
+
+      // RAG: busca trechos mais relevantes
+      const sections = fullContext.split('\n\n---\n\n');
+      return rankAndSelect(sections, query);
+    }
+
+    // Fallback: lê chunks do DynamoDB (caso nunca tenha sido treinado)
+    const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: kbId }) as ParsedChunk[];
     const allContent: string[] = [];
 
     for (const chunk of chunks) {
@@ -207,7 +244,6 @@ export const knowledgeBaseService = {
       }
     }
 
-    // Coleta conteúdo dos links
     const kb = await this.getById(kbId);
     for (const link of kb.links) {
       if (link.content) {
@@ -215,28 +251,27 @@ export const knowledgeBaseService = {
       }
     }
 
-    if (allContent.length === 0) {
-      return '';
-    }
+    if (allContent.length === 0) return '';
 
-    // RAG simples: busca por similaridade textual (keyword matching)
-    const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-    
-    const scoredContent = allContent.map((content) => {
-      const lowerContent = content.toLowerCase();
-      const score = queryWords.reduce((acc, word) => {
-        return acc + (lowerContent.includes(word) ? 1 : 0);
-      }, 0);
-      return { content, score };
-    });
-
-    // Ordena por relevância e pega os top 3
-    scoredContent.sort((a, b) => b.score - a.score);
-    const topContent = scoredContent.slice(0, 3).map((item) => item.content);
-
-    return topContent.join('\n\n---\n\n');
+    return rankAndSelect(allContent, query);
   },
 };
+
+/**
+ * Ranqueia seções por relevância (keyword matching) e retorna as top 3.
+ */
+function rankAndSelect(sections: string[], query: string): string {
+  const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+
+  const scored = sections.map((content) => {
+    const lowerContent = content.toLowerCase();
+    const score = queryWords.reduce((acc, word) => acc + (lowerContent.includes(word) ? 1 : 0), 0);
+    return { content, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 3).map((item) => item.content).join('\n\n---\n\n');
+}
 
 /**
  * Faz parsing de arquivo para texto plano.

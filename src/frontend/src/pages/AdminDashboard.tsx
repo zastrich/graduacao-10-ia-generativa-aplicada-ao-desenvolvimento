@@ -58,7 +58,13 @@ export const AdminDashboard: React.FC = () => {
     setError(null);
     try {
       const data = await fetchAdminKnowledgeBases();
-      setKbs(data);
+      setKbs(Array.isArray(data) ? data : []);
+      // Atualiza a KB selecionada no modal de arquivos (se aberto)
+      setSelectedKbForFiles((prev) => {
+        if (!prev) return null;
+        const updated = (Array.isArray(data) ? data : []).find((kb: KnowledgeBase) => kb.id === prev.id);
+        return updated || prev;
+      });
     } catch (err: any) {
       console.error(err);
       if (err.response?.status === 401) {
