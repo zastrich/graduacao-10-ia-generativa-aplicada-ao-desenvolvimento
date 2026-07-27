@@ -94,32 +94,30 @@ export const knowledgeBaseService = {
   },
 
   async addFile(kbId: string, fileName: string, fileContent: Buffer, contentType: string): Promise<KnowledgeBaseFile> {
-    const kb = await this.getById(kbId);
     const fileId = uuid();
     const s3Key = `${kbId}/${fileId}-${fileName}`;
 
-    // Upload para S3
+    // Upload original para S3
     await s3Service.putObject(s3Key, fileContent, contentType);
 
-    // Faz parsing do conteúdo
+    // Faz parsing e salva texto extraído no S3 (para RAG)
     const parsedContent = await parseFileContent(fileContent, fileName);
+    if (parsedContent) {
+      const parsedKey = `${kbId}/${fileId}-${fileName}.parsed.txt`;
+      await s3Service.putObject(parsedKey, Buffer.from(parsedContent, 'utf-8'), 'text/plain');
+    }
 
     const file: KnowledgeBaseFile = {
       id: fileId,
-      fileName,
-      fileType: contentType,
-      fileSize: fileContent.length,
+      name: fileName,
+      type: contentType,
+      size: fileContent.length,
       s3Key,
-      parsedContent,
       uploadedAt: new Date().toISOString(),
     };
 
-    const updatedFiles = [...kb.files, file];
-    await dynamoService.update(TABLE, { id: kbId }, {
-      files: updatedFiles,
-      fileCount: updatedFiles.length,
-      updatedAt: new Date().toISOString(),
-    });
+    // Append atômico — seguro para uploads simultâneos
+    await dynamoService.appendToList(TABLE, { id: kbId }, 'files', file, 'fileCount');
 
     return file;
   },
@@ -129,7 +127,9 @@ export const knowledgeBaseService = {
     const file = kb.files.find((f) => f.id === fileId);
     if (!file) throw { statusCode: 404, message: 'Arquivo não encontrado' };
 
+    // Remove original + parsed do S3
     await s3Service.deleteObject(file.s3Key);
+    await s3Service.deleteObject(`${file.s3Key}.parsed.txt`).catch(() => {});
 
     const updatedFiles = kb.files.filter((f) => f.id !== fileId);
     await dynamoService.update(TABLE, { id: kbId }, {
@@ -178,16 +178,22 @@ export const knowledgeBaseService = {
   },
 
   /**
-   * Monta o contexto RAG para a inferência — busca trechos relevantes dos documentos.
+   * Monta o contexto RAG para a inferência — busca trechos relevantes dos documentos no S3.
    */
   async buildContext(kbId: string, query: string): Promise<string> {
     const kb = await this.getById(kbId);
     const allContent: string[] = [];
 
-    // Coleta conteúdo parseado de todos os arquivos
+    // Coleta conteúdo parseado dos arquivos (lê do S3)
     for (const file of kb.files) {
-      if (file.parsedContent) {
-        allContent.push(`[Arquivo: ${file.fileName}]\n${file.parsedContent}`);
+      try {
+        const parsedKey = `${file.s3Key}.parsed.txt`;
+        const content = await s3Service.getObject(parsedKey);
+        if (content) {
+          allContent.push(`[Arquivo: ${file.name}]\n${content.toString('utf-8')}`);
+        }
+      } catch {
+        // Arquivo parsed pode não existir (upload antigo), ignora
       }
     }
 

@@ -106,6 +106,58 @@ export const dynamoService = {
     return result.Attributes;
   },
 
+  /**
+   * Atomically appends an item to a list attribute and increments a counter.
+   * Safe for concurrent writes (no read-modify-write race condition).
+   */
+  async appendToList(
+    tableName: string,
+    key: Record<string, string>,
+    listAttr: string,
+    item: any,
+    counterAttr?: string
+  ): Promise<Record<string, any> | undefined> {
+    if (config.isLocal) {
+      // Mock: simple read-modify-write (no concurrency locally)
+      const record = await mockDynamoDB.getTable(tableName).get(key);
+      if (!record) return undefined;
+      const list = record[listAttr] || [];
+      list.push(item);
+      record[listAttr] = list;
+      if (counterAttr) record[counterAttr] = list.length;
+      record.updatedAt = new Date().toISOString();
+      return mockDynamoDB.getTable(tableName).put(record);
+    }
+
+    const client = await getAWSClient();
+    let updateExpression = `SET #list = list_append(if_not_exists(#list, :emptyList), :newItem), #updatedAt = :now`;
+    const expressionAttributeNames: Record<string, string> = {
+      '#list': listAttr,
+      '#updatedAt': 'updatedAt',
+    };
+    const expressionAttributeValues: Record<string, any> = {
+      ':newItem': [item],
+      ':emptyList': [],
+      ':now': new Date().toISOString(),
+    };
+
+    if (counterAttr) {
+      updateExpression += ` ADD #counter :one`;
+      expressionAttributeNames['#counter'] = counterAttr;
+      expressionAttributeValues[':one'] = 1;
+    }
+
+    const result = await client.send(new dynamoCommands.UpdateCommand({
+      TableName: tableName,
+      Key: key,
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes;
+  },
+
   async delete(tableName: string, key: Record<string, string>): Promise<boolean> {
     if (config.isLocal) {
       return mockDynamoDB.getTable(tableName).delete(key);

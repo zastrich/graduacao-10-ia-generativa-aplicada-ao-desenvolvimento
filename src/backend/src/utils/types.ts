@@ -17,11 +17,10 @@ export interface KnowledgeBase {
 
 export interface KnowledgeBaseFile {
   id: string;
-  fileName: string;
-  fileType: string;
-  fileSize: number;
+  name: string;
+  type: string;
+  size: number;
   s3Key: string;
-  parsedContent?: string;
   uploadedAt: string;
 }
 
