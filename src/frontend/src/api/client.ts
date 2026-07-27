@@ -132,10 +132,16 @@ export async function uploadKnowledgeBaseFile(
   kbId: string,
   file: File
 ): Promise<{ message: string; file: any }> {
-  const formData = new FormData();
-  formData.append('file', file);
-  const res = await apiClient.post(`/admin/knowledge-bases/${kbId}/files`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+  // Converte o arquivo para base64 (formato esperado pela Lambda)
+  const arrayBuffer = await file.arrayBuffer();
+  const base64 = btoa(
+    new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+  );
+
+  const res = await apiClient.post(`/admin/knowledge-bases/${kbId}/files`, {
+    fileName: file.name,
+    fileContent: base64,
+    contentType: file.type || 'application/octet-stream',
   });
   return res.data;
 }

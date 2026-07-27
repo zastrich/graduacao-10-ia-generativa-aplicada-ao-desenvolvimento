@@ -16,6 +16,8 @@ import {
   Divider,
   Alert,
   CircularProgress,
+  LinearProgress,
+  Chip,
 } from '@mui/material';
 import {
   UploadFile as UploadIcon,
@@ -23,6 +25,9 @@ import {
   Delete as DeleteIcon,
   Link as LinkIcon,
   Autorenew as RetrainIcon,
+  CheckCircle as SuccessIcon,
+  Error as ErrorIcon,
+  Replay as RetryIcon,
 } from '@mui/icons-material';
 import {
   uploadKnowledgeBaseFile,
@@ -39,13 +44,22 @@ interface AdminFilesModalProps {
   onRefresh: () => void;
 }
 
+type UploadStatus = 'pending' | 'uploading' | 'success' | 'error';
+
+interface FileUploadItem {
+  id: string;
+  file: File;
+  status: UploadStatus;
+  errorMessage?: string;
+}
+
 export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
   open,
   onClose,
   knowledgeBase,
   onRefresh,
 }) => {
-  const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<FileUploadItem[]>([]);
   const [linkUrl, setLinkUrl] = useState('');
   const [addingLink, setAddingLink] = useState(false);
   const [retraining, setRetraining] = useState(false);
@@ -53,24 +67,57 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
 
   if (!knowledgeBase) return null;
 
+  const uploadSingleFile = async (item: FileUploadItem, kbId: string) => {
+    setUploadQueue((prev) =>
+      prev.map((f) => (f.id === item.id ? { ...f, status: 'uploading' as UploadStatus } : f))
+    );
+
+    try {
+      await uploadKnowledgeBaseFile(kbId, item.file);
+      setUploadQueue((prev) =>
+        prev.map((f) => (f.id === item.id ? { ...f, status: 'success' as UploadStatus } : f))
+      );
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.error || err.message || 'Falha ao enviar arquivo.';
+      setUploadQueue((prev) =>
+        prev.map((f) =>
+          f.id === item.id ? { ...f, status: 'error' as UploadStatus, errorMessage } : f
+        )
+      );
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setUploading(true);
     setMsg(null);
 
-    try {
-      await uploadKnowledgeBaseFile(knowledgeBase.id, files[0]);
-      setMsg({ type: 'success', text: `Arquivo "${files[0].name}" enviado e indexado com sucesso!` });
-      onRefresh();
-    } catch (err: any) {
-      console.error(err);
-      setMsg({ type: 'error', text: err.response?.data?.message || 'Falha ao enviar arquivo.' });
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
+    // Cria items na fila para cada arquivo selecionado
+    const newItems: FileUploadItem[] = Array.from(files).map((file, i) => ({
+      id: `${Date.now()}-${i}-${file.name}`,
+      file,
+      status: 'pending' as UploadStatus,
+    }));
+
+    setUploadQueue((prev) => [...prev, ...newItems]);
+
+    // Envia cada arquivo de forma independente (paralelo)
+    await Promise.allSettled(
+      newItems.map((item) => uploadSingleFile(item, knowledgeBase.id))
+    );
+
+    onRefresh();
+    e.target.value = '';
+  };
+
+  const handleRetry = async (item: FileUploadItem) => {
+    await uploadSingleFile(item, knowledgeBase.id);
+    onRefresh();
+  };
+
+  const handleClearCompleted = () => {
+    setUploadQueue((prev) => prev.filter((f) => f.status !== 'success'));
   };
 
   const handleDeleteFile = async (fileId: string) => {
@@ -108,13 +155,29 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
 
     try {
       await triggerRetrainKnowledgeBase(knowledgeBase.id);
-      setMsg({ type: 'success', text: 'Retreinamento concluído com sucesso!' });
+      setMsg({ type: 'success', text: 'Retreinamento concluido com sucesso!' });
       onRefresh();
     } catch (err: any) {
       console.error(err);
       setMsg({ type: 'error', text: 'Falha ao disparar retreinamento.' });
     } finally {
       setRetraining(false);
+    }
+  };
+
+  const hasUploading = uploadQueue.some((f) => f.status === 'uploading');
+  const hasCompleted = uploadQueue.some((f) => f.status === 'success');
+
+  const getStatusChip = (status: UploadStatus, errorMessage?: string) => {
+    switch (status) {
+      case 'pending':
+        return <Chip size="small" label="Aguardando" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#94A3B8', height: 22, fontSize: '0.7rem' }} />;
+      case 'uploading':
+        return <Chip size="small" icon={<CircularProgress size={12} />} label="Enviando" sx={{ bgcolor: 'rgba(99,102,241,0.2)', color: '#818CF8', height: 22, fontSize: '0.7rem' }} />;
+      case 'success':
+        return <Chip size="small" icon={<SuccessIcon sx={{ fontSize: 14 }} />} label="Enviado" color="success" sx={{ height: 22, fontSize: '0.7rem' }} />;
+      case 'error':
+        return <Chip size="small" icon={<ErrorIcon sx={{ fontSize: 14 }} />} label={errorMessage || 'Erro'} color="error" sx={{ height: 22, fontSize: '0.7rem', maxWidth: 200 }} />;
     }
   };
 
@@ -144,23 +207,83 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
         {/* Upload de Arquivos */}
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#A78BFA', mb: 1 }}>
-            1. Enviar Arquivos (PDF, TXT, XLSX)
+            1. Enviar Arquivos (PDF, TXT, XLSX) — selecione um ou mais arquivos
           </Typography>
 
-          <Button
-            component="label"
-            variant="contained"
-            color="primary"
-            startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
-            disabled={uploading}
-            sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)' }}
-          >
-            {uploading ? 'Processando...' : 'Selecionar Arquivo'}
-            <input type="file" hidden accept=".pdf,.txt,.xlsx,.csv" onChange={handleFileUpload} />
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Button
+              component="label"
+              variant="contained"
+              color="primary"
+              startIcon={hasUploading ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
+              disabled={hasUploading}
+              sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)' }}
+            >
+              {hasUploading ? 'Enviando...' : 'Selecionar Arquivos'}
+              <input type="file" hidden multiple accept=".pdf,.txt,.xlsx,.csv" onChange={handleFileUpload} />
+            </Button>
+
+            {hasCompleted && (
+              <Button size="small" variant="text" color="inherit" onClick={handleClearCompleted} sx={{ color: '#64748B', fontSize: '0.75rem' }}>
+                Limpar concluidos
+              </Button>
+            )}
+          </Box>
+
+          {/* Fila de Upload */}
+          {uploadQueue.length > 0 && (
+            <List sx={{ mt: 1 }}>
+              {uploadQueue.map((item) => (
+                <ListItem
+                  key={item.id}
+                  sx={{
+                    borderRadius: '8px',
+                    mb: 0.5,
+                    backgroundColor: item.status === 'error'
+                      ? 'rgba(239, 68, 68, 0.08)'
+                      : item.status === 'success'
+                      ? 'rgba(34, 197, 94, 0.08)'
+                      : 'rgba(255, 255, 255, 0.03)',
+                    pr: 1,
+                  }}
+                  secondaryAction={
+                    item.status === 'error' ? (
+                      <IconButton size="small" color="warning" onClick={() => handleRetry(item)} title="Tentar novamente">
+                        <RetryIcon fontSize="small" />
+                      </IconButton>
+                    ) : undefined
+                  }
+                >
+                  <ListItemIcon sx={{ minWidth: 36, color: '#06B6D4' }}>
+                    <FileIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: '#F8FAFC', fontSize: '0.85rem' }}>
+                          {item.file.name}
+                        </Typography>
+                        {getStatusChip(item.status, item.errorMessage)}
+                      </Box>
+                    }
+                    secondary={`${(item.file.size / 1024).toFixed(1)} KB`}
+                    slotProps={{
+                      secondary: { sx: { fontSize: '0.7rem', color: '#64748B' } },
+                    }}
+                  />
+                  {item.status === 'uploading' && (
+                    <LinearProgress sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, borderRadius: '0 0 8px 8px' }} />
+                  )}
+                </ListItem>
+              ))}
+            </List>
+          )}
 
           {/* Lista de Arquivos Existentes */}
-          <List sx={{ mt: 1 }}>
+          <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mt: 2, mb: 0.5, fontWeight: 600 }}>
+            Arquivos na base:
+          </Typography>
+          <List>
             {(!knowledgeBase.files || knowledgeBase.files.length === 0) ? (
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', py: 1 }}>
                 Nenhum arquivo enviado ainda.
@@ -202,7 +325,7 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
         {/* Links de Crawl */}
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#67E8F9', mb: 1 }}>
-            2. Adicionar Links Web para Coleta Automática (JSON)
+            2. Adicionar Links Web para Coleta Automatica (JSON)
           </Typography>
 
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -237,7 +360,7 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
                   </ListItemIcon>
                   <ListItemText
                     primary={lnk.url}
-                    secondary={`Status: ${lnk.status} ${lnk.lastFetchedAt ? `• Último fetch: ${new Date(lnk.lastFetchedAt).toLocaleString()}` : ''}`}
+                    secondary={`Status: ${lnk.status} ${lnk.lastFetchedAt ? `• Ultimo fetch: ${new Date(lnk.lastFetchedAt).toLocaleString()}` : ''}`}
                     slotProps={{
                       primary: { sx: { fontSize: '0.85rem', color: '#F8FAFC' } },
                       secondary: { sx: { fontSize: '0.75rem', color: '#64748B' } },
