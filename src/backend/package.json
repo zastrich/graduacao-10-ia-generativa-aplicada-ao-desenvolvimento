@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:lambda": "tsc && node -e \"const fs=require('fs');fs.cpSync('package.json','dist/package.json');fs.cpSync('package-lock.json','dist/package-lock.json');\" && cd dist && npm ci --omit=dev",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",

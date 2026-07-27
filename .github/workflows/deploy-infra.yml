@@ -77,7 +77,7 @@ jobs:
           # Compila o backend antes do sam build (dist é necessário como CodeUri)
           cd src/backend
           npm ci
-          npm run build
+          npm run build:lambda
           cd ../infrastructure
           sam build
           sam deploy \
