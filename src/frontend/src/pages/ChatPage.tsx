@@ -137,7 +137,7 @@ export const ChatPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)', maxHeight: 'calc(100vh - 48px)' }}>
       {/* Informações da Base */}
       <ChatHeader knowledgeBase={kb} />
 
@@ -146,14 +146,15 @@ export const ChatPage: React.FC = () => {
         elevation={0}
         sx={{
           flex: 1,
-          p: 3,
-          mb: 2,
-          borderRadius: '16px',
+          p: { xs: 1.5, md: 3 },
+          mb: 1,
+          borderRadius: { xs: '8px', md: '16px' },
           backgroundColor: 'rgba(11, 15, 25, 0.6)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
+          minHeight: 0,
         }}
       >
         {messages.length === 0 && !loadingMessages ? (
