@@ -44,6 +44,7 @@ export const config = {
     conversations: process.env.CONVERSATIONS_TABLE || 'copiloto-conversations-dev',
     messages: process.env.MESSAGES_TABLE || 'copiloto-messages-dev',
     users: process.env.USERS_TABLE || 'copiloto-users-dev',
+    chunks: process.env.CHUNKS_TABLE || 'copiloto-chunks-dev',
   },
   s3: {
     knowledgeBucket: process.env.KNOWLEDGE_BUCKET || 'conhecimento-ia-generativa-dev',

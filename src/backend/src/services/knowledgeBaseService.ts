@@ -10,6 +10,7 @@ import {
   KnowledgeBase,
   KnowledgeBaseFile,
   KnowledgeBaseLink,
+  ParsedChunk,
   CreateKnowledgeBaseRequest,
   UpdateKnowledgeBaseRequest,
   AddLinkRequest,
@@ -17,6 +18,7 @@ import {
 } from '../utils/types';
 
 const TABLE = config.tables.knowledgeBases;
+const CHUNKS_TABLE = config.tables.chunks;
 
 export const knowledgeBaseService = {
   async create(data: CreateKnowledgeBaseRequest): Promise<KnowledgeBase> {
@@ -90,6 +92,11 @@ export const knowledgeBaseService = {
     const kb = await this.getById(id);
     // Remove pasta do S3
     await s3Service.deleteFolder(`${kb.id}/`);
+    // Remove todos os chunks parseados dessa base
+    const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: id }) as ParsedChunk[];
+    for (const chunk of chunks) {
+      await dynamoService.delete(CHUNKS_TABLE, { knowledgeBaseId: id, fileId: chunk.fileId });
+    }
     await dynamoService.delete(TABLE, { id });
   },
 
@@ -99,6 +106,19 @@ export const knowledgeBaseService = {
 
     // Upload original para S3
     await s3Service.putObject(s3Key, fileContent, contentType);
+
+    // Parseia e armazena o conteúdo na tabela de chunks (separada da KB)
+    const parsedContent = await parseFileContent(fileContent, fileName);
+    if (parsedContent) {
+      const chunk: ParsedChunk = {
+        knowledgeBaseId: kbId,
+        fileId,
+        fileName,
+        content: parsedContent,
+        parsedAt: new Date().toISOString(),
+      };
+      await dynamoService.put(CHUNKS_TABLE, chunk);
+    }
 
     const file: KnowledgeBaseFile = {
       id: fileId,
@@ -120,7 +140,11 @@ export const knowledgeBaseService = {
     const file = kb.files.find((f) => f.id === fileId);
     if (!file) throw { statusCode: 404, message: 'Arquivo não encontrado' };
 
+    // Remove do S3
     await s3Service.deleteObject(file.s3Key);
+
+    // Remove chunk parseado
+    await dynamoService.delete(CHUNKS_TABLE, { knowledgeBaseId: kbId, fileId }).catch(() => {});
 
     const updatedFiles = kb.files.filter((f) => f.id !== fileId);
     await dynamoService.update(TABLE, { id: kbId }, {
@@ -169,28 +193,22 @@ export const knowledgeBaseService = {
   },
 
   /**
-   * Monta o contexto RAG para a inferência — lê e parseia documentos originais do S3.
+   * Monta o contexto RAG para a inferência — lê chunks parseados da tabela de chunks.
    */
   async buildContext(kbId: string, query: string): Promise<string> {
-    const kb = await this.getById(kbId);
+    // Busca todos os chunks dessa base de conhecimento
+    const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: kbId }) as ParsedChunk[];
+
     const allContent: string[] = [];
 
-    // Lê e parseia cada arquivo original do S3
-    for (const file of kb.files) {
-      try {
-        const content = await s3Service.getObject(file.s3Key);
-        if (content) {
-          const parsed = await parseFileContent(content, file.name);
-          if (parsed) {
-            allContent.push(`[Arquivo: ${file.name}]\n${parsed}`);
-          }
-        }
-      } catch {
-        // Se falhar ao ler, ignora e segue
+    for (const chunk of chunks) {
+      if (chunk.content) {
+        allContent.push(`[Arquivo: ${chunk.fileName}]\n${chunk.content}`);
       }
     }
 
     // Coleta conteúdo dos links
+    const kb = await this.getById(kbId);
     for (const link of kb.links) {
       if (link.content) {
         allContent.push(`[Link: ${link.url}]\n${link.content}`);

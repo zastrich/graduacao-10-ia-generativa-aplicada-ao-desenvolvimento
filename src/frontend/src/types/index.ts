@@ -2,6 +2,10 @@ export interface BedrockConfig {
   temperature: number;
   top_p: number;
   top_k: number;
+  topP?: number;
+  topK?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
 }
 
 export interface LinkConfig {

@@ -23,6 +23,8 @@ interface AdminKBModalProps {
   editingKb?: KnowledgeBase | null;
 }
 
+const DEFAULT_SYSTEM_PROMPT = 'Voce e um assistente corporativo inteligente. Responda as perguntas do usuario com base no contexto fornecido. Se nao tiver informacao suficiente, diga que nao encontrou a resposta nos documentos disponiveis.';
+
 export const AdminKBModal: React.FC<AdminKBModalProps> = ({
   open,
   onClose,
@@ -35,6 +37,8 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
   const [temperature, setTemperature] = useState(0.7);
   const [topP, setTopP] = useState(0.9);
   const [topK, setTopK] = useState(50);
+  const [maxTokens, setMaxTokens] = useState(2048);
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,9 +47,12 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       setName(editingKb.name || '');
       setSlug(editingKb.slug || '');
       setDescription(editingKb.description || '');
-      setTemperature(editingKb.bedrockConfig?.temperature ?? 0.7);
-      setTopP(editingKb.bedrockConfig?.top_p ?? 0.9);
-      setTopK(editingKb.bedrockConfig?.top_k ?? 50);
+      const cfg = editingKb.bedrockConfig;
+      setTemperature(cfg?.temperature ?? 0.7);
+      setTopP(cfg?.top_p ?? 0.9);
+      setTopK(cfg?.top_k ?? 50);
+      setMaxTokens((cfg as any)?.maxTokens ?? 2048);
+      setSystemPrompt((cfg as any)?.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     } else {
       setName('');
       setSlug('');
@@ -53,6 +60,8 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       setTemperature(0.7);
       setTopP(0.9);
       setTopK(50);
+      setMaxTokens(2048);
+      setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     }
     setError(null);
   }, [editingKb, open]);
@@ -82,10 +91,12 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       name,
       slug,
       description,
-      bedrockConfig: {
+      config: {
         temperature,
-        top_p: topP,
-        top_k: topK,
+        topP,
+        topK,
+        maxTokens,
+        systemPrompt,
       },
     };
 
@@ -99,7 +110,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.message || 'Falha ao salvar base de conhecimento.');
+      setError(err.response?.data?.error || 'Falha ao salvar base de conhecimento.');
     } finally {
       setLoading(false);
     }
@@ -142,8 +153,8 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
             <TextField
               fullWidth
               multiline
-              rows={3}
-              label="Descrição / Objetivo da Base"
+              rows={2}
+              label="Descricao / Objetivo da Base"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -152,14 +163,27 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <TuneIcon color="secondary" />
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#67E8F9' }}>
-                Guardrails & Parâmetros do AWS Bedrock
+                Configuracao do Modelo & Guardrails
               </Typography>
             </Box>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 3 }}>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="System Prompt (instrucoes para o modelo)"
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              helperText="Define o comportamento e personalidade do assistente. Use para guardrails de seguranca."
+              slotProps={{
+                input: { sx: { fontSize: '0.85rem', fontFamily: 'monospace' } },
+              }}
+            />
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
               <Box>
                 <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Temperatura ({temperature}):
+                  Temperatura ({temperature}) — criatividade das respostas
                 </Typography>
                 <Slider
                   value={temperature}
@@ -174,7 +198,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
 
               <Box>
                 <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Top P ({topP}):
+                  Top P ({topP}) — diversidade de tokens
                 </Typography>
                 <Slider
                   value={topP}
@@ -189,7 +213,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
 
               <Box>
                 <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Top K ({topK}):
+                  Top K ({topK}) — candidatos por token
                 </Typography>
                 <Slider
                   value={topK}
@@ -197,6 +221,21 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
                   max={100}
                   step={1}
                   onChange={(_, v) => setTopK(v as number)}
+                  valueLabelDisplay="auto"
+                  color="secondary"
+                />
+              </Box>
+
+              <Box>
+                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+                  Max Tokens ({maxTokens}) — tamanho maximo da resposta
+                </Typography>
+                <Slider
+                  value={maxTokens}
+                  min={256}
+                  max={8192}
+                  step={256}
+                  onChange={(_, v) => setMaxTokens(v as number)}
                   valueLabelDisplay="auto"
                   color="secondary"
                 />

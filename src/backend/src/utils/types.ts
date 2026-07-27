@@ -24,6 +24,18 @@ export interface KnowledgeBaseFile {
   uploadedAt: string;
 }
 
+/**
+ * Conteúdo parseado de um arquivo, armazenado na tabela de chunks.
+ * Separado da KB para manter os objetos leves.
+ */
+export interface ParsedChunk {
+  knowledgeBaseId: string;
+  fileId: string;
+  fileName: string;
+  content: string;
+  parsedAt: string;
+}
+
 export interface KnowledgeBaseLink {
   id: string;
   url: string;

@@ -97,6 +97,7 @@ Globals:
         MESSAGES_TABLE: !Ref MessagesTable
         USERS_TABLE: !Ref UsersTable
         KNOWLEDGE_BUCKET: !Ref KnowledgeBucket
+        CHUNKS_TABLE: !Ref ChunksTable
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_REGION: !Ref AWS::Region
         JWT_SECRET: !Ref JwtSecret
@@ -235,6 +236,30 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
+
+  # ============================================================
+  # DynamoDB — Parsed Chunks (conteúdo extraído dos arquivos)
+  # ============================================================
+  ChunksTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub copiloto-chunks-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      AttributeDefinitions:
+        - AttributeName: knowledgeBaseId
+          AttributeType: S
+        - AttributeName: fileId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: knowledgeBaseId
+          KeyType: HASH
+        - AttributeName: fileId
+          KeyType: RANGE
 
   # ============================================================
   # S3 Buckets
@@ -513,6 +538,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref KnowledgeBasesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChunksTable
         - S3CrudPolicy:
             BucketName: !Ref KnowledgeBucket
       Events:
@@ -565,6 +592,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref KnowledgeBasesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChunksTable
         - S3CrudPolicy:
             BucketName: !Ref KnowledgeBucket
       Events:
@@ -600,6 +629,8 @@ Resources:
         # Task 8: KnowledgeBases é só leitura para o chat
         - DynamoDBReadPolicy:
             TableName: !Ref KnowledgeBasesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ChunksTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ConversationsTable
         - DynamoDBCrudPolicy:
