@@ -75,14 +75,16 @@ Infraestrutura como código (IaC) utilizando **AWS SAM** (Serverless Application
 | `AWS_REGION` | Região AWS para deploy | `us-east-1` |
 | `DEPLOY_STAGE` | Ambiente (dev/staging/prod) | `prod` |
 | `WEB_URL` | Subdomínio do frontend | `copiloto-corporativo.code200.com.br` |
-| `API_URL` | Subdomínio da API | `api.copiloto-corporativo.code200.com.br` |
+| `API_URL` | Subdomínio da API | `copiloto-corporativo-api.code200.com.br` |
 | `HOSTED_ZONE_ID` | ID da Hosted Zone Route53 | `Z0851491YVAOB1BFAMS` |
 | `ALLOWED_ORIGIN` | Origem CORS (https://WEB_URL) | `https://copiloto-corporativo.code200.com.br` |
 | `FRONTEND_S3_BUCKET` | Nome do bucket do frontend | `copiloto-frontend-prod` |
 | `CLOUDFRONT_DISTRIBUTION_ID` | ID da distribuição CloudFront | `E23ZWQXFX7RLYY` |
-| `VITE_API_URL` | (Opcional) URL completa da API para o frontend | `https://api.copiloto-corporativo.code200.com.br` |
+| `VITE_API_URL` | (Opcional) URL completa da API para o frontend | `https://copiloto-corporativo-api.code200.com.br` |
 
 > **Nota:** Se `VITE_API_URL` não for definida, o workflow usa `https://{API_URL}` automaticamente.
+
+> **Atenção:** Se seu certificado ACM é wildcard (ex: `*.code200.com.br`), ele cobre apenas **um nível** de subdomínio. Use `app-api.code200.com.br` e não `api.app.code200.com.br`.
 
 ## Como Clonar e Subir do Zero
 
@@ -127,7 +129,7 @@ sam deploy \
     AllowedOrigin="https://copiloto-corporativo.code200.com.br" \
     HostedZoneId="Z0851491YVAOB1BFAMS" \
     WebDomain="copiloto-corporativo.code200.com.br" \
-    ApiDomain="api.copiloto-corporativo.code200.com.br" \
+    ApiDomain="copiloto-corporativo-api.code200.com.br" \
     CertificateArn="arn:aws:acm:us-east-1:ACCOUNT:certificate/UUID"
 ```
 
@@ -151,7 +153,7 @@ sam deploy \
 ```
 Route53 (DNS)
     ├── copiloto-corporativo.code200.com.br → CloudFront
-    └── api.copiloto-corporativo.code200.com.br → API Gateway Custom Domain
+    └── copiloto-corporativo-api.code200.com.br → API Gateway Custom Domain
 
 CloudFront (CDN + HTTPS + Security Headers)
     └── S3 (copiloto-frontend-{stage}) via OAC
