@@ -39,6 +39,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
   const [topK, setTopK] = useState(50);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [agentName, setAgentName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +55,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       setTopK(cfg.topK ?? cfg.top_k ?? 50);
       setMaxTokens(cfg.maxTokens ?? 2048);
       setSystemPrompt(cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT);
+      setAgentName(cfg.agentName || '');
     } else {
       setName('');
       setSlug('');
@@ -63,6 +65,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
       setTopK(50);
       setMaxTokens(2048);
       setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+      setAgentName('');
     }
     setError(null);
   }, [editingKb, open]);
@@ -98,6 +101,7 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
         topK,
         maxTokens,
         systemPrompt,
+        agentName,
       },
     };
 
@@ -167,6 +171,15 @@ export const AdminKBModal: React.FC<AdminKBModalProps> = ({
                 Configuracao do Modelo & Guardrails
               </Typography>
             </Box>
+
+            <TextField
+              fullWidth
+              label="Nome do Agente (exibido no chat)"
+              value={agentName}
+              onChange={(e) => setAgentName(e.target.value)}
+              placeholder="Ex: Atendente Virtual, Assistente RH..."
+              helperText="Se vazio, usa 'Copiloto AWS Bedrock' como nome no chat."
+            />
 
             <TextField
               fullWidth

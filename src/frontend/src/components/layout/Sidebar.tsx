@@ -186,6 +186,25 @@ export const Sidebar: React.FC = () => {
         </Typography>
 
         <List disablePadding>
+          <ListItemButton
+            onClick={() => navigate({ to: '/' })}
+            sx={{
+              borderRadius: 2,
+              mb: 0.5,
+              '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.04)' },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 32, color: '#94A3B8' }}>
+              <KnowledgeIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText
+              primary="Todas as bases"
+              slotProps={{
+                primary: { sx: { fontSize: '0.8rem', color: '#CBD5E1', fontWeight: 500 } },
+              }}
+            />
+          </ListItemButton>
+
           {knowledgeBases.map((kb) => (
             <ListItemButton
               key={kb.id}

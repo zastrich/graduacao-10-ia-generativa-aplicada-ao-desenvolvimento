@@ -6,6 +6,7 @@ export interface BedrockConfig {
   topK?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  agentName?: string;
 }
 
 export interface LinkConfig {

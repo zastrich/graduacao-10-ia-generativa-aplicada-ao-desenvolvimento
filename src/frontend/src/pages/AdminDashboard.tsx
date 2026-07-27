@@ -235,32 +235,39 @@ export const AdminDashboard: React.FC = () => {
         <Table>
           <TableHead sx={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
             <TableRow>
-              <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>NOME DA BASE</TableCell>
-              <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>SLUG / URL</TableCell>
+              <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>BASE</TableCell>
               <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>FONTES</TableCell>
-              <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>BEDROCK TEMP</TableCell>
-              <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>ÚLTIMO TREINO</TableCell>
-              <TableCell align="right" sx={{ color: '#94A3B8', fontWeight: 700 }}>AÇÕES</TableCell>
+              <TableCell sx={{ color: '#94A3B8', fontWeight: 700 }}>ULTIMO TREINO</TableCell>
+              <TableCell align="right" sx={{ color: '#94A3B8', fontWeight: 700 }}>ACOES</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} align="center">
+                <TableCell colSpan={4} align="center">
                   <Skeleton variant="text" height={40} />
                 </TableCell>
               </TableRow>
             ) : kbs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ color: '#64748B', py: 4 }}>
+                <TableCell colSpan={4} align="center" sx={{ color: '#64748B', py: 4 }}>
                   Nenhuma base de conhecimento cadastrada. Clique em "Nova Base" acima.
                 </TableCell>
               </TableRow>
             ) : (
               kbs.map((kb) => (
                 <TableRow key={kb.id} hover sx={{ '&:hover': { backgroundColor: 'rgba(255,255,255,0.02)' } }}>
-                  <TableCell sx={{ color: '#F8FAFC', fontWeight: 600 }}>{kb.name}</TableCell>
-                  <TableCell sx={{ color: '#06B6D4' }}>/{kb.slug}/chat</TableCell>
+                  <TableCell>
+                    <Typography sx={{ color: '#F8FAFC', fontWeight: 600, fontSize: '0.9rem' }}>{kb.name}</Typography>
+                    <Typography
+                      component="a"
+                      href={`/${kb.slug}/chat`}
+                      onClick={(e: React.MouseEvent) => { e.preventDefault(); navigate({ to: '/$slug/chat', params: { slug: kb.slug } }); }}
+                      sx={{ color: '#06B6D4', fontSize: '0.75rem', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                    >
+                      /{kb.slug}/chat
+                    </Typography>
+                  </TableCell>
                   <TableCell sx={{ color: '#CBD5E1' }}>
                     <Button
                       size="small"
@@ -270,9 +277,6 @@ export const AdminDashboard: React.FC = () => {
                     >
                       {kb.fileCount || 0} Arquivo(s)
                     </Button>
-                  </TableCell>
-                  <TableCell sx={{ color: '#CBD5E1' }}>
-                    {kb.bedrockConfig?.temperature ?? 0.7}
                   </TableCell>
                   <TableCell sx={{ color: '#94A3B8', fontSize: '0.85rem' }}>
                     {kb.lastTrainedAt ? new Date(kb.lastTrainedAt).toLocaleDateString() : 'Pendente'}

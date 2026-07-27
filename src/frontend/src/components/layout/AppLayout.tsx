@@ -11,8 +11,7 @@ export const AppLayout: React.FC = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, md: 3 },
-          maxWidth: '1200px',
+          p: 3,
           width: '100%',
           overflowY: 'auto',
           height: '100vh',

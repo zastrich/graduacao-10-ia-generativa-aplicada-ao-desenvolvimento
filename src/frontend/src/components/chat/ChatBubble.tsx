@@ -5,10 +5,12 @@ import type { Message } from '../../types';
 
 interface ChatBubbleProps {
   message: Message;
+  agentName?: string;
 }
 
-export const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, agentName }) => {
   const isUser = message.sender === 'user';
+  const displayName = isUser ? 'Voce' : (agentName || 'Copiloto AWS Bedrock');
 
   return (
     <Box
@@ -36,10 +38,10 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
       <Box sx={{ maxWidth: '80%' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
           <Typography variant="caption" sx={{ fontWeight: 600, color: isUser ? '#A78BFA' : '#67E8F9' }}>
-            {isUser ? 'Você' : 'Copiloto AWS Bedrock'}
+            {displayName}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748B', fontSize: '0.7rem' }}>
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {message.timestamp ? new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
           </Typography>
         </Box>
 

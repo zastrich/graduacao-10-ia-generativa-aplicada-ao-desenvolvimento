@@ -137,7 +137,7 @@ export const ChatPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)' }}>
       {/* Informações da Base */}
       <ChatHeader knowledgeBase={kb} />
 
@@ -176,7 +176,7 @@ export const ChatPage: React.FC = () => {
             </Typography>
           </Box>
         ) : (
-          messages.map((msg) => <ChatBubble key={msg.id} message={msg} />)
+          messages.map((msg) => <ChatBubble key={msg.id} message={msg} agentName={(kb as any)?.config?.agentName || kb?.bedrockConfig?.agentName} />)
         )}
 
         {sending && (
