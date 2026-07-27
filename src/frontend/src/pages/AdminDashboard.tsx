@@ -15,6 +15,7 @@ import {
   Tooltip,
   Skeleton,
   Alert,
+  TextField,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -25,12 +26,11 @@ import {
   Storage as StorageIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchAdminKnowledgeBases, deleteKnowledgeBase } from '../api/client';
+import { fetchAdminKnowledgeBases, deleteKnowledgeBase, adminRegister } from '../api/client';
 import type { KnowledgeBase } from '../types';
 import { AdminKBModal } from '../components/admin/AdminKBModal';
 import { AdminFilesModal } from '../components/admin/AdminFilesModal';
-import { removeAdminToken, isAdminAuthenticated } from '../utils/uid';
-import { Logout as LogoutIcon } from '@mui/icons-material';
+import { isAdminAuthenticated } from '../utils/uid';
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -44,6 +44,26 @@ export const AdminDashboard: React.FC = () => {
 
   const [filesModalOpen, setFilesModalOpen] = useState(false);
   const [selectedKbForFiles, setSelectedKbForFiles] = useState<KnowledgeBase | null>(null);
+
+  // New admin user state
+  const [showNewUser, setShowNewUser] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPass, setNewUserPass] = useState('');
+  const [newUserMsg, setNewUserMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleCreateUser = async () => {
+    if (!newUserEmail || !newUserPass || !newUserName) return;
+    try {
+      await adminRegister(newUserEmail, newUserPass, newUserName);
+      setNewUserMsg({ type: 'success', text: `Admin "${newUserName}" criado com sucesso!` });
+      setNewUserEmail('');
+      setNewUserName('');
+      setNewUserPass('');
+    } catch (err: any) {
+      setNewUserMsg({ type: 'error', text: err.response?.data?.error || 'Erro ao criar usuario.' });
+    }
+  };
 
   useEffect(() => {
     if (!isAdminAuthenticated()) {
@@ -115,7 +135,15 @@ export const AdminDashboard: React.FC = () => {
             startIcon={<HistoryIcon />}
             onClick={() => navigate({ to: '/admin/logs' })}
           >
-            Logs de Conversas
+            Logs
+          </Button>
+
+          <Button
+            variant="outlined"
+            color="info"
+            onClick={() => setShowNewUser(!showNewUser)}
+          >
+            {showNewUser ? 'Fechar' : 'Novo Admin'}
           </Button>
 
           <Button
@@ -129,18 +157,6 @@ export const AdminDashboard: React.FC = () => {
             sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' }}
           >
             Nova Base
-          </Button>
-
-          <Button
-            variant="outlined"
-            color="error"
-            startIcon={<LogoutIcon />}
-            onClick={() => {
-              removeAdminToken();
-              navigate({ to: '/admin/login' });
-            }}
-          >
-            Sair
           </Button>
         </Box>
       </Box>
@@ -191,6 +207,28 @@ export const AdminDashboard: React.FC = () => {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {/* Novo Admin */}
+      {showNewUser && (
+        <Paper sx={{ p: 2.5, mb: 3, borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', backgroundColor: 'rgba(17,24,39,0.7)' }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#A78BFA', mb: 1.5 }}>
+            Cadastrar Novo Administrador
+          </Typography>
+          {newUserMsg && (
+            <Alert severity={newUserMsg.type} sx={{ mb: 1.5 }} onClose={() => setNewUserMsg(null)}>
+              {newUserMsg.text}
+            </Alert>
+          )}
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <TextField size="small" label="Nome" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} sx={{ flex: 1, minWidth: 150 }} />
+            <TextField size="small" label="Email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} sx={{ flex: 1, minWidth: 200 }} />
+            <TextField size="small" label="Senha (min 12)" type="password" value={newUserPass} onChange={(e) => setNewUserPass(e.target.value)} sx={{ flex: 1, minWidth: 150 }} />
+            <Button variant="contained" onClick={handleCreateUser} disabled={!newUserEmail || !newUserPass || !newUserName} sx={{ background: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)' }}>
+              Criar Admin
+            </Button>
+          </Box>
+        </Paper>
+      )}
 
       {/* Tabela de Bases */}
       <TableContainer component={Paper} sx={{ borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)', backgroundColor: 'rgba(17,24,39,0.7)' }}>
