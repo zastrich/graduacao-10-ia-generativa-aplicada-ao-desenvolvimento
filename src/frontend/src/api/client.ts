@@ -25,9 +25,15 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de resposta — redireciona para login se token expirar/for inválido
+// Interceptor de resposta — extrai .data do wrapper {success, data} e trata 401
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // A API retorna { success: boolean, data: T } — extrai o data para simplificar
+    if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       // Remove token inválido e redireciona para login
@@ -44,7 +50,7 @@ apiClient.interceptors.response.use(
 // --- Public Endpoints ---
 export async function fetchPublicKnowledgeBases(): Promise<KnowledgeBase[]> {
   const res = await apiClient.get<KnowledgeBase[]>('/knowledge-bases');
-  return res.data;
+  return res.data ?? [];
 }
 
 export async function fetchPublicKnowledgeBaseBySlug(slug: string): Promise<KnowledgeBase> {

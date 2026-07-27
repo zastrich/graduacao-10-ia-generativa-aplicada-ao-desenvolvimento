@@ -31,7 +31,7 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     fetchPublicKnowledgeBases()
-      .then((data) => setKnowledgeBases(data))
+      .then((data) => setKnowledgeBases(Array.isArray(data) ? data : []))
       .catch((err) => console.error('Erro ao carregar bases:', err))
       .finally(() => setLoading(false));
   }, []);
