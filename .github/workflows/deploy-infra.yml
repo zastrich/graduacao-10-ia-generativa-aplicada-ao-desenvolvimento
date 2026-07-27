@@ -23,7 +23,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Validate SAM Template
         run: |
@@ -52,22 +52,22 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Cleanup stacks in bad state
         run: |
-          # Limpa a managed stack do SAM e a stack principal se estiverem em estado inválido
+          REGION="${{ vars.AWS_REGION }}"
           for STACK in "aws-sam-cli-managed-default" "copiloto-corporativo-stack"; do
             STATUS=$(aws cloudformation describe-stacks \
               --stack-name "$STACK" \
-              --region us-east-1 \
+              --region "$REGION" \
               --query "Stacks[0].StackStatus" \
               --output text 2>/dev/null || echo "DOES_NOT_EXIST")
             echo "$STACK status: $STATUS"
             if [[ "$STATUS" == "REVIEW_IN_PROGRESS" || "$STATUS" == "ROLLBACK_COMPLETE" || "$STATUS" == "ROLLBACK_FAILED" ]]; then
               echo "Deletando stack $STACK ($STATUS)..."
-              aws cloudformation delete-stack --stack-name "$STACK" --region us-east-1
-              aws cloudformation wait stack-delete-complete --stack-name "$STACK" --region us-east-1
+              aws cloudformation delete-stack --stack-name "$STACK" --region "$REGION"
+              aws cloudformation wait stack-delete-complete --stack-name "$STACK" --region "$REGION"
               echo "$STACK deletada."
             fi
           done
@@ -86,7 +86,12 @@ jobs:
             --no-fail-on-empty-changeset \
             --stack-name copiloto-corporativo-stack \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --region ${{ vars.AWS_REGION }} \
             --parameter-overrides \
               Stage=${{ vars.DEPLOY_STAGE || 'prod' }} \
               JwtSecret=${{ secrets.JWT_SECRET }} \
-              AllowedOrigin="${{ vars.ALLOWED_ORIGIN || '*' }}"
+              AllowedOrigin="${{ vars.ALLOWED_ORIGIN || '*' }}" \
+              HostedZoneId="${{ vars.HOSTED_ZONE_ID || '' }}" \
+              WebDomain="${{ vars.WEB_URL || '' }}" \
+              ApiDomain="${{ vars.API_URL || '' }}" \
+              CertificateArn="${{ secrets.CERTIFICATE_ARN || '' }}"
