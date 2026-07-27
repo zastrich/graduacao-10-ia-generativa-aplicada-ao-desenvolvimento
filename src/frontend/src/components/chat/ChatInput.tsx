@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Box, TextField, IconButton, CircularProgress, Tooltip } from '@mui/material';
 import { Send as SendIcon } from '@mui/icons-material';
@@ -10,18 +10,35 @@ interface ChatInputProps {
   placeholder?: string;
 }
 
-export const ChatInput: React.FC<ChatInputProps> = ({
+export interface ChatInputHandle {
+  focus: () => void;
+}
+
+export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(({
   onSend,
   disabled = false,
   loading = false,
   placeholder = 'Pergunte qualquer coisa sobre esta base de conhecimento...',
-}) => {
+}, ref) => {
   const [text, setText] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }));
+
+  // Auto-focus on mount
+  useEffect(() => {
+    const timer = setTimeout(() => inputRef.current?.focus(), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleSend = () => {
     if (text.trim() && !disabled && !loading) {
       onSend(text.trim());
       setText('');
+      // Re-focus after send
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
@@ -56,6 +73,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         placeholder={placeholder}
         disabled={disabled || loading}
         variant="standard"
+        inputRef={inputRef}
         slotProps={{
           input: {
             disableUnderline: true,
@@ -96,4 +114,4 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       </Tooltip>
     </Box>
   );
-};
+});

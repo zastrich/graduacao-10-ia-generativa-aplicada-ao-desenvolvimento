@@ -28,7 +28,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 async function listPublic(origin?: string): Promise<APIGatewayProxyResult> {
   const bases = await knowledgeBaseService.list();
 
-  // Retorna apenas campos públicos (sem detalhes internos)
+  // Retorna campos públicos + agentName para exibição no chat
   const publicBases = bases.map((kb) => ({
     id: kb.id,
     name: kb.name,
@@ -37,6 +37,7 @@ async function listPublic(origin?: string): Promise<APIGatewayProxyResult> {
     fileCount: kb.fileCount,
     lastTrainedAt: kb.lastTrainedAt,
     updatedAt: kb.updatedAt,
+    agentName: kb.config?.agentName || '',
   }));
 
   return success(publicBases, 200, origin);
@@ -54,6 +55,7 @@ async function getBySlug(slug: string, origin?: string): Promise<APIGatewayProxy
       fileCount: kb.fileCount,
       lastTrainedAt: kb.lastTrainedAt,
       updatedAt: kb.updatedAt,
+      agentName: kb.config?.agentName || '',
     },
     200,
     origin

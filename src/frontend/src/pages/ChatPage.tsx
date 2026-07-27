@@ -176,7 +176,7 @@ export const ChatPage: React.FC = () => {
             </Typography>
           </Box>
         ) : (
-          messages.map((msg) => <ChatBubble key={msg.id} message={msg} agentName={(kb as any)?.config?.agentName || kb?.bedrockConfig?.agentName} />)
+          messages.map((msg) => <ChatBubble key={msg.id} message={msg} agentName={(kb as any)?.agentName} />)
         )}
 
         {sending && (
