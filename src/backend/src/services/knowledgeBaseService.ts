@@ -258,19 +258,74 @@ export const knowledgeBaseService = {
 };
 
 /**
- * Ranqueia seções por relevância (keyword matching) e retorna as top 3.
+ * Ranqueia seções por relevância usando TF (frequência do termo) + boost por proximidade.
+ * Retorna os top 5 trechos mais relevantes, limitados a ~6000 chars total para caber no contexto.
  */
 function rankAndSelect(sections: string[], query: string): string {
-  const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+  const MAX_CONTEXT_CHARS = 6000;
+  const TOP_N = 5;
+
+  // Tokeniza a query — inclui palavras curtas também (ex: "idoso", "mapa")
+  const queryWords = query.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+
+  if (queryWords.length === 0) {
+    return sections.slice(0, TOP_N).join('\n\n---\n\n').substring(0, MAX_CONTEXT_CHARS);
+  }
 
   const scored = sections.map((content) => {
-    const lowerContent = content.toLowerCase();
-    const score = queryWords.reduce((acc, word) => acc + (lowerContent.includes(word) ? 1 : 0), 0);
+    const lowerContent = content.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const contentLength = lowerContent.length || 1;
+
+    let score = 0;
+
+    for (const word of queryWords) {
+      // Conta ocorrências (TF)
+      const regex = new RegExp(word, 'gi');
+      const matches = lowerContent.match(regex);
+      const tf = matches ? matches.length : 0;
+
+      if (tf > 0) {
+        // TF normalizado pelo tamanho do documento (favorece documentos mais focados)
+        score += (tf / (contentLength / 1000));
+
+        // Boost se a palavra aparece nas primeiras 200 chars (título/início)
+        const firstPart = lowerContent.substring(0, 200);
+        if (firstPart.includes(word)) {
+          score += 2;
+        }
+      }
+    }
+
+    // Boost para documentos menores (mais focados/específicos)
+    if (contentLength < 2000) score *= 1.2;
+
     return { content, score };
   });
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 3).map((item) => item.content).join('\n\n---\n\n');
+  // Filtra somente seções que tiveram algum match
+  const matched = scored.filter((s) => s.score > 0);
+  matched.sort((a, b) => b.score - a.score);
+
+  // Pega os top N respeitando o limite de caracteres
+  const selected: string[] = [];
+  let totalChars = 0;
+
+  for (const item of matched.slice(0, TOP_N)) {
+    // Trunca seções muito longas para 1500 chars
+    const truncated = item.content.length > 1500
+      ? item.content.substring(0, 1500) + '\n[... conteudo truncado]'
+      : item.content;
+
+    if (totalChars + truncated.length > MAX_CONTEXT_CHARS) break;
+    selected.push(truncated);
+    totalChars += truncated.length;
+  }
+
+  return selected.join('\n\n---\n\n');
 }
 
 /**
