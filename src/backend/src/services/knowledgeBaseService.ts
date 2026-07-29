@@ -184,14 +184,21 @@ export const knowledgeBaseService = {
 
     for (const chunk of chunks) {
       if (chunk.content) {
-        allContent.push(`[Arquivo: ${chunk.fileName}]\n${chunk.content}`);
+        // Normaliza o conteúdo: remove HTML, limpa whitespace excessivo
+        const cleaned = normalizeContent(chunk.content);
+        if (cleaned.trim().length > 20) { // ignora chunks vazios/muito curtos
+          allContent.push(`[Fonte: ${chunk.fileName}]\n${cleaned}`);
+        }
       }
     }
 
     // Adiciona conteúdo dos links
     for (const link of kb.links) {
       if (link.content) {
-        allContent.push(`[Link: ${link.url}]\n${link.content}`);
+        const cleaned = normalizeContent(link.content);
+        if (cleaned.trim().length > 20) {
+          allContent.push(`[Link: ${link.url}]\n${cleaned}`);
+        }
       }
     }
 
@@ -201,7 +208,7 @@ export const knowledgeBaseService = {
     // Salva o contexto consolidado no S3
     await s3Service.putObject(contextKey, Buffer.from(contextText, 'utf-8'), 'text/plain');
 
-    console.log(`[KnowledgeBaseService] Retreinamento concluído: ${kb.name} (${kbId}) — ${allContent.length} fontes, ${contextText.length} chars`);
+    console.log(`[KnowledgeBaseService] Retreinamento concluido: ${kb.name} (${kbId}) — ${allContent.length} fontes, ${contextText.length} chars`);
 
     const updated = await dynamoService.update(TABLE, { id: kbId }, {
       lastTrainedAt: new Date().toISOString(),
@@ -256,6 +263,55 @@ export const knowledgeBaseService = {
     return rankAndSelect(allContent, query);
   },
 };
+
+/**
+ * Normaliza conteúdo removendo HTML e limpando formatação.
+ * Converte HTML em texto estruturado legível.
+ */
+function normalizeContent(raw: string): string {
+  let text = raw;
+
+  // Remove scripts e styles inteiros
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+
+  // Remove forms e inputs (não contêm conteúdo útil)
+  text = text.replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '');
+  text = text.replace(/<input[^>]*\/?>/gi, '');
+
+  // Substitui <br>, <hr>, </p>, </div>, </tr>, </li> por quebra de linha
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/(?:p|div|tr|li|h[1-6])>/gi, '\n');
+  text = text.replace(/<hr\s*\/?>/gi, '\n');
+
+  // Substitui <td> por tab (para manter estrutura tabular mínima)
+  text = text.replace(/<\/td>/gi, ' | ');
+
+  // Remove todas as tags HTML restantes
+  text = text.replace(/<[^>]+>/g, '');
+
+  // Decodifica entidades HTML comuns
+  text = text.replace(/&nbsp;/gi, ' ');
+  text = text.replace(/&amp;/gi, '&');
+  text = text.replace(/&lt;/gi, '<');
+  text = text.replace(/&gt;/gi, '>');
+  text = text.replace(/&quot;/gi, '"');
+  text = text.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)));
+
+  // Remove linhas que são apenas whitespace ou separadores
+  text = text.split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^[\s|_\-=]+$/.test(line))
+    .join('\n');
+
+  // Colapsa múltiplas quebras de linha
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  // Remove espaços múltiplos
+  text = text.replace(/ {2,}/g, ' ');
+
+  return text.trim();
+}
 
 /**
  * Ranqueia seções por relevância usando TF (frequência do termo) + boost por proximidade.
