@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -31,6 +31,7 @@ import {
   Replay as RetryIcon,
   Download as DownloadIcon,
   OpenInNew as OpenIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import {
   uploadKnowledgeBaseFile,
@@ -74,6 +75,34 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
   const [importingSitemap, setImportingSitemap] = useState(false);
   const [retraining, setRetraining] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [countdown, setCountdown] = useState(30);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isTraining = (knowledgeBase as any).retrainStatus === 'training';
+
+  // Auto-refresh every 30s while training
+  useEffect(() => {
+    if (!isTraining) {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      return;
+    }
+    setCountdown(30);
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          onRefresh();
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isTraining]);
+
+  const handleManualRefresh = () => {
+    onRefresh();
+    setCountdown(30);
+  };
 
   if (!knowledgeBase) return null;
 
@@ -248,11 +277,21 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
         )}
 
         {/* Retrain progress summary */}
-        {(knowledgeBase as any).retrainStatus === 'training' && (knowledgeBase as any).retrainProgress && (
+        {isTraining && (knowledgeBase as any).retrainProgress && (
           <Box sx={{ mx: 2, mt: 2, p: 1.5, borderRadius: '8px', bgcolor: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)' }}>
-            <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 700 }}>
-              Retreinamento em andamento
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 700 }}>
+                Retreinamento em andamento
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" sx={{ color: '#64748B', fontSize: '0.65rem' }}>
+                  Atualiza em {countdown}s
+                </Typography>
+                <IconButton size="small" onClick={handleManualRefresh} sx={{ color: '#A78BFA', p: 0.3 }}>
+                  <RefreshIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Box>
+            </Box>
             <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
               <Typography variant="caption" sx={{ color: '#CBD5E1' }}>
                 Processados: {(knowledgeBase as any).retrainProgress.processed}/{(knowledgeBase as any).retrainProgress.total}
