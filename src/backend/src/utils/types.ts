@@ -11,6 +11,8 @@ export interface KnowledgeBase {
   links: KnowledgeBaseLink[];
   config: BedrockConfig;
   lastTrainedAt: string | null;
+  retrainStatus: 'idle' | 'training' | 'cancelling';
+  retrainProgress?: { total: number; processed: number; errors: number };
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +23,8 @@ export interface KnowledgeBaseFile {
   type: string;
   size: number;
   s3Key: string;
+  status: 'pending' | 'success' | 'error';
+  statusMessage?: string;
   uploadedAt: string;
 }
 

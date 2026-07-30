@@ -40,6 +40,7 @@ import {
   deleteKnowledgeBaseLink,
   importSitemap,
   triggerRetrainKnowledgeBase,
+  cancelRetrainKnowledgeBase,
 } from '../../api/client';
 import type { KnowledgeBase } from '../../types';
 
@@ -184,13 +185,23 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
     setRetraining(true);
     setMsg(null);
     try {
-      await triggerRetrainKnowledgeBase(knowledgeBase.id);
-      setMsg({ type: 'success', text: 'Retreinamento concluido! Links foram indexados.' });
+      const result = await triggerRetrainKnowledgeBase(knowledgeBase.id);
+      setMsg({ type: 'success', text: result?.message || 'Retreinamento iniciado em background.' });
       onRefresh();
-    } catch {
-      setMsg({ type: 'error', text: 'Falha ao retreinar.' });
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err.response?.data?.error || 'Falha ao retreinar.' });
     } finally {
       setRetraining(false);
+    }
+  };
+
+  const handleCancelRetrain = async () => {
+    try {
+      await cancelRetrainKnowledgeBase(knowledgeBase.id);
+      setMsg({ type: 'success', text: 'Cancelamento solicitado. O treino sera interrompido no proximo batch.' });
+      onRefresh();
+    } catch {
+      setMsg({ type: 'error', text: 'Falha ao cancelar.' });
     }
   };
 
@@ -209,16 +220,24 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth slotProps={{ paper: { sx: { borderRadius: '20px', backgroundColor: '#111827' } } }}>
       <DialogTitle sx={{ fontWeight: 700, color: '#F8FAFC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{knowledgeBase.name}</span>
-        <Button
-          variant="outlined"
-          color="secondary"
-          size="small"
-          startIcon={retraining ? <CircularProgress size={16} color="inherit" /> : <RetrainIcon />}
-          onClick={handleRetrain}
-          disabled={retraining}
-        >
-          {retraining ? 'Treinando...' : 'Retreinar Base'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {(knowledgeBase as any).retrainStatus === 'training' ? (
+            <Button variant="outlined" color="warning" size="small" onClick={handleCancelRetrain}>
+              Cancelar Treino
+            </Button>
+          ) : (
+            <Button
+              variant="outlined"
+              color="secondary"
+              size="small"
+              startIcon={retraining ? <CircularProgress size={16} color="inherit" /> : <RetrainIcon />}
+              onClick={handleRetrain}
+              disabled={retraining || (knowledgeBase as any).retrainStatus === 'training'}
+            >
+              {retraining ? 'Iniciando...' : 'Retreinar Base'}
+            </Button>
+          )}
+        </Box>
       </DialogTitle>
 
       <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.08)', p: 0 }}>
@@ -226,6 +245,30 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
           <Alert severity={msg.type} sx={{ mx: 2, mt: 2 }} onClose={() => setMsg(null)}>
             {msg.text}
           </Alert>
+        )}
+
+        {/* Retrain progress summary */}
+        {(knowledgeBase as any).retrainStatus === 'training' && (knowledgeBase as any).retrainProgress && (
+          <Box sx={{ mx: 2, mt: 2, p: 1.5, borderRadius: '8px', bgcolor: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)' }}>
+            <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 700 }}>
+              Retreinamento em andamento
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+              <Typography variant="caption" sx={{ color: '#CBD5E1' }}>
+                Processados: {(knowledgeBase as any).retrainProgress.processed}/{(knowledgeBase as any).retrainProgress.total}
+              </Typography>
+              {(knowledgeBase as any).retrainProgress.errors > 0 && (
+                <Typography variant="caption" sx={{ color: '#EF4444' }}>
+                  Erros: {(knowledgeBase as any).retrainProgress.errors}
+                </Typography>
+              )}
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={((knowledgeBase as any).retrainProgress.processed / Math.max((knowledgeBase as any).retrainProgress.total, 1)) * 100}
+              sx={{ mt: 1, borderRadius: 1 }}
+            />
+          </Box>
         )}
 
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -294,10 +337,16 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
                     >
                       <ListItemIcon sx={{ minWidth: 28 }}><FileIcon sx={{ fontSize: 16, color: '#06B6D4' }} /></ListItemIcon>
                       <ListItemText
-                        primary={file.name}
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem', color: '#F8FAFC' }} noWrap>{file.name}</Typography>
+                            {(file as any).status === 'error' && <Chip size="small" label={(file as any).statusMessage || 'Erro'} color="error" sx={{ height: 18, fontSize: '0.6rem' }} />}
+                            {(file as any).status === 'pending' && <Chip size="small" label="Pendente" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(255,255,255,0.08)', color: '#94A3B8' }} />}
+                            {(file as any).status === 'success' && <Chip size="small" label="OK" color="success" sx={{ height: 18, fontSize: '0.6rem' }} />}
+                          </Box>
+                        }
                         secondary={`${(file.size / 1024).toFixed(1)} KB • ${new Date(file.uploadedAt).toLocaleDateString()}`}
                         slotProps={{
-                          primary: { sx: { fontSize: '0.8rem', color: '#F8FAFC' } },
                           secondary: { sx: { fontSize: '0.65rem', color: '#64748B' } },
                         }}
                       />
@@ -384,11 +433,13 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
                         </IconButton>
                       </Box>
                       <Typography variant="caption" sx={{ color: '#64748B', pl: 3.5, fontSize: '0.65rem' }}>
-                        {lnk.status === 'error' && <span style={{ color: '#EF4444' }}>Erro: {(lnk as any).statusMessage || 'falha no fetch'} • </span>}
-                        {lnk.status === 'skipped' && <span style={{ color: '#F59E0B' }}>Pulado: {(lnk as any).statusMessage || 'dominio bloqueado'} • </span>}
+                        {lnk.status === 'error' && <span style={{ color: '#EF4444' }}>{(lnk as any).statusMessage || 'Erro'} • </span>}
+                        {lnk.status === 'skipped' && <span style={{ color: '#F59E0B' }}>{(lnk as any).statusMessage || 'Pulado'} • </span>}
+                        {lnk.status === 'success' && <span style={{ color: '#22C55E' }}>Indexado • </span>}
+                        {lnk.status === 'pending' && <span style={{ color: '#94A3B8' }}>Pendente • </span>}
                         {lnk.lastFetchedAt
-                          ? `Ultimo fetch: ${new Date(lnk.lastFetchedAt).toLocaleString()}`
-                          : 'Ainda nao indexado — retreine a base'}
+                          ? `Fetch: ${new Date(lnk.lastFetchedAt).toLocaleString()}`
+                          : 'Nao indexado — retreine a base'}
                       </Typography>
                     </ListItem>
                   ))}
