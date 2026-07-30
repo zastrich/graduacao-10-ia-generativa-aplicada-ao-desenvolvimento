@@ -78,7 +78,7 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
   const [countdown, setCountdown] = useState(30);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isTraining = (knowledgeBase as any).retrainStatus === 'training';
+  const isTraining = (knowledgeBase as any)?.retrainStatus === 'training';
 
   // Auto-refresh every 30s while training
   useEffect(() => {
