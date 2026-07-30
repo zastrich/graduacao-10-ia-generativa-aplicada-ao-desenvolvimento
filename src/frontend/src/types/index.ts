@@ -13,6 +13,8 @@ export interface LinkConfig {
   id: string;
   url: string;
   lastFetchedAt?: string;
+  status?: 'pending' | 'success' | 'error' | 'skipped';
+  statusMessage?: string;
   createdAt: string;
 }
 

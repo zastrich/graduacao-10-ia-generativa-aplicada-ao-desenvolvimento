@@ -384,6 +384,8 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
                         </IconButton>
                       </Box>
                       <Typography variant="caption" sx={{ color: '#64748B', pl: 3.5, fontSize: '0.65rem' }}>
+                        {lnk.status === 'error' && <span style={{ color: '#EF4444' }}>Erro: {(lnk as any).statusMessage || 'falha no fetch'} • </span>}
+                        {lnk.status === 'skipped' && <span style={{ color: '#F59E0B' }}>Pulado: {(lnk as any).statusMessage || 'dominio bloqueado'} • </span>}
                         {lnk.lastFetchedAt
                           ? `Ultimo fetch: ${new Date(lnk.lastFetchedAt).toLocaleString()}`
                           : 'Ainda nao indexado — retreine a base'}
