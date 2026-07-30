@@ -12,9 +12,8 @@ export interface BedrockConfig {
 export interface LinkConfig {
   id: string;
   url: string;
-  autoRefreshIntervalHours?: number;
   lastFetchedAt?: string;
-  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  createdAt: string;
 }
 
 export interface FileItem {

@@ -174,9 +174,7 @@ export const knowledgeBaseService = {
     const link: KnowledgeBaseLink = {
       id: uuid(),
       url: data.url,
-      refreshIntervalHours: data.refreshIntervalHours || null,
       lastFetchedAt: null,
-      content: null,
       createdAt: new Date().toISOString(),
     };
 
@@ -192,26 +190,60 @@ export const knowledgeBaseService = {
   async retrain(kbId: string): Promise<KnowledgeBase> {
     const kb = await this.getById(kbId);
 
-    // Consolida todos os chunks em um único arquivo de contexto RAG no S3
+    // 1. Fetch links e salva como chunks
+    const updatedLinks = [...kb.links];
+    for (let i = 0; i < updatedLinks.length; i++) {
+      const link = updatedLinks[i];
+      try {
+        const response = await fetch(link.url, {
+          headers: { 'User-Agent': 'CopilotoCorporativo/1.0' },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') || '';
+          const body = await response.text();
+
+          let content: string;
+          if (contentType.includes('application/json')) {
+            // JSON: mantém como está
+            content = body;
+          } else {
+            // HTML ou texto: normaliza removendo HTML
+            content = normalizeContent(body);
+          }
+
+          if (content.trim().length > 20) {
+            // Salva/atualiza chunk para esse link (usa link.id como fileId)
+            await dynamoService.put(CHUNKS_TABLE, {
+              knowledgeBaseId: kbId,
+              fileId: `link-${link.id}`,
+              fileName: link.url,
+              content,
+              parsedAt: new Date().toISOString(),
+            } as ParsedChunk);
+          }
+
+          updatedLinks[i] = { ...link, lastFetchedAt: new Date().toISOString() };
+        }
+      } catch (err) {
+        console.error(`[Retrain] Erro ao fetch link ${link.url}:`, err);
+        // Não falha o retrain por causa de um link com erro
+      }
+    }
+
+    // Atualiza links com lastFetchedAt
+    await dynamoService.update(TABLE, { id: kbId }, { links: updatedLinks });
+
+    // 2. Consolida todos os chunks em um único arquivo de contexto RAG no S3
     const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: kbId }) as ParsedChunk[];
     const allContent: string[] = [];
 
     for (const chunk of chunks) {
       if (chunk.content) {
-        // Normaliza o conteúdo: remove HTML, limpa whitespace excessivo
         const cleaned = normalizeContent(chunk.content);
-        if (cleaned.trim().length > 20) { // ignora chunks vazios/muito curtos
-          allContent.push(`[Fonte: ${chunk.fileName}]\n${cleaned}`);
-        }
-      }
-    }
-
-    // Adiciona conteúdo dos links
-    for (const link of kb.links) {
-      if (link.content) {
-        const cleaned = normalizeContent(link.content);
         if (cleaned.trim().length > 20) {
-          allContent.push(`[Link: ${link.url}]\n${cleaned}`);
+          const label = chunk.fileName.startsWith('http') ? `[Link: ${chunk.fileName}]` : `[Fonte: ${chunk.fileName}]`;
+          allContent.push(`${label}\n${cleaned}`);
         }
       }
     }
@@ -219,7 +251,6 @@ export const knowledgeBaseService = {
     const contextText = allContent.join('\n\n---\n\n');
     const contextKey = `${kbId}/context.txt`;
 
-    // Salva o contexto consolidado no S3
     await s3Service.putObject(contextKey, Buffer.from(contextText, 'utf-8'), 'text/plain');
 
     console.log(`[KnowledgeBaseService] Retreinamento concluido: ${kb.name} (${kbId}) — ${allContent.length} fontes, ${contextText.length} chars`);
@@ -262,13 +293,6 @@ export const knowledgeBaseService = {
     for (const chunk of chunks) {
       if (chunk.content) {
         allContent.push(`[Arquivo: ${chunk.fileName}]\n${chunk.content}`);
-      }
-    }
-
-    const kb = await this.getById(kbId);
-    for (const link of kb.links) {
-      if (link.content) {
-        allContent.push(`[Link: ${link.url}]\n${link.content}`);
       }
     }
 

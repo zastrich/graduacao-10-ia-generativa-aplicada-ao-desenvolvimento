@@ -609,6 +609,12 @@ Resources:
             RestApiId: !Ref CopilotoApi
             Path: /admin/knowledge-bases/{id}/files/{fileId}
             Method: DELETE
+        DownloadFile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/files/{fileId}
+            Method: GET
         AddLink:
           Type: Api
           Properties:
