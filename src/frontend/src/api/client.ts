@@ -169,15 +169,16 @@ export async function deleteKnowledgeBaseFile(kbId: string, fileId: string): Pro
   await apiClient.delete(`/admin/knowledge-bases/${kbId}/files/${fileId}`);
 }
 
+export async function getFileDownloadUrl(kbId: string, fileId: string): Promise<string> {
+  const res = await apiClient.get(`/admin/knowledge-bases/${kbId}/files/${fileId}`);
+  return (res.data as any).url;
+}
+
 export async function addKnowledgeBaseLink(
   kbId: string,
-  url: string,
-  autoRefreshIntervalHours?: number
+  url: string
 ): Promise<any> {
-  const res = await apiClient.post(`/admin/knowledge-bases/${kbId}/links`, {
-    url,
-    autoRefreshIntervalHours,
-  });
+  const res = await apiClient.post(`/admin/knowledge-bases/${kbId}/links`, { url });
   return res.data;
 }
 

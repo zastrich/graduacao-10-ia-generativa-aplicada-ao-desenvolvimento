@@ -39,9 +39,7 @@ export interface ParsedChunk {
 export interface KnowledgeBaseLink {
   id: string;
   url: string;
-  refreshIntervalHours: number | null;
   lastFetchedAt: string | null;
-  content: string | null;
   createdAt: string;
 }
 
@@ -155,5 +153,4 @@ export interface AuthResponse {
 
 export interface AddLinkRequest {
   url: string;
-  refreshIntervalHours?: number;
 }

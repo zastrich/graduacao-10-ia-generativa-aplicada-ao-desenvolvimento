@@ -4,6 +4,7 @@
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { knowledgeBaseService } from '../services/knowledgeBaseService';
+import { s3Service } from '../services/s3Service';
 import { requireAuth } from '../utils/auth';
 import { success, created, noContent, badRequest, error, corsPreflightResponse } from '../utils/response';
 import { validateFile } from '../utils/fileValidator';
@@ -25,6 +26,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // POST /admin/knowledge-bases/:id/files
     if (event.httpMethod === 'POST' && path.includes('/files')) {
       return await uploadFile(kbId, event, origin);
+    }
+
+    // GET /admin/knowledge-bases/:id/files/:fileId/download
+    if (event.httpMethod === 'GET' && path.includes('/files/')) {
+      const fileId = event.pathParameters?.fileId;
+      if (!fileId) return badRequest('ID do arquivo e obrigatorio', origin);
+      return await getDownloadUrl(kbId, fileId, origin);
     }
 
     // DELETE /admin/knowledge-bases/:id/files/:fileId
@@ -90,6 +98,15 @@ async function uploadFile(kbId: string, event: APIGatewayProxyEvent, origin?: st
 async function deleteFile(kbId: string, fileId: string, origin?: string): Promise<APIGatewayProxyResult> {
   await knowledgeBaseService.deleteFile(kbId, fileId);
   return noContent(origin);
+}
+
+async function getDownloadUrl(kbId: string, fileId: string, origin?: string): Promise<APIGatewayProxyResult> {
+  const kb = await knowledgeBaseService.getById(kbId);
+  const file = kb.files.find((f) => f.id === fileId);
+  if (!file) return badRequest('Arquivo nao encontrado', origin);
+
+  const url = await s3Service.getPresignedUrl(file.s3Key, file.name);
+  return success({ url, fileName: file.name }, 200, origin);
 }
 
 async function addLink(kbId: string, event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {

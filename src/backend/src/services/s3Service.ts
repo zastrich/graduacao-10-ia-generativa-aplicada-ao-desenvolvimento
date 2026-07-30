@@ -7,14 +7,17 @@ import { mockS3 } from '../mocks/mockS3';
 
 let s3Client: any = null;
 let s3Commands: any = {};
+let getSignedUrl: any = null;
 
 async function getAWSClient() {
   if (config.isLocal) return null;
 
   if (!s3Client) {
     const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = await import('@aws-sdk/client-s3');
+    const { getSignedUrl: gsu } = await import('@aws-sdk/s3-request-presigner');
     s3Client = new S3Client({ region: config.aws.region });
     s3Commands = { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand };
+    getSignedUrl = gsu;
   }
   return s3Client;
 }
@@ -111,5 +114,22 @@ export const s3Service = {
         Objects: keys.map((key) => ({ Key: key })),
       },
     }));
+  },
+
+  async getPresignedUrl(key: string, fileName: string): Promise<string> {
+    const bucket = config.s3.knowledgeBucket;
+
+    if (config.isLocal) {
+      return `http://localhost:3001/mock-download/${key}`;
+    }
+
+    const client = await getAWSClient();
+    const command = new s3Commands.GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ResponseContentDisposition: `attachment; filename="${fileName}"`,
+    });
+
+    return await getSignedUrl(client, command, { expiresIn: 3600 });
   },
 };
