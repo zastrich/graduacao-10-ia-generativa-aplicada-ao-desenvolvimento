@@ -1,24 +1,17 @@
 name: Deploy Frontend SPA
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/frontend/**'
-      - '.github/workflows/deploy-frontend.yml'
-  workflow_dispatch:
-  # Roda automaticamente após o backend ser deployado com sucesso
-  # Garante a ordem: infra → backend → frontend
   workflow_run:
     workflows: ["Deploy Backend Lambdas"]
     types: [completed]
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build-and-test:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    # Se acionado por workflow_run, só continua se o backend passou
-    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    environment: production
     steps:
       - uses: actions/checkout@v4.2.0
 
@@ -46,32 +39,6 @@ jobs:
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || format('https://{0}', vars.API_URL) }}
 
-  deploy:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4.2.0
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4.1.0
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'src/frontend/package-lock.json'
-
-      - name: Install Dependencies
-        run: |
-          cd src/frontend
-          npm ci
-
-      - name: Build React SPA
-        run: |
-          cd src/frontend
-          npm run build
-        env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || format('https://{0}', vars.API_URL) }}
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -83,15 +50,13 @@ jobs:
         run: |
           BUCKET="${{ vars.FRONTEND_S3_BUCKET }}"
           if [ -z "$BUCKET" ]; then
-            echo "::error::Variable FRONTEND_S3_BUCKET não configurada. Acesse Settings → Variables e adicione o nome do bucket."
+            echo "::error::Variable FRONTEND_S3_BUCKET nao configurada."
             exit 1
           fi
-          # Arquivos com hash (JS/CSS gerados pelo Vite) — cache longo
           aws s3 sync src/frontend/dist/ s3://${BUCKET} \
             --delete \
             --exclude "index.html" \
             --cache-control "public, max-age=31536000, immutable"
-          # index.html — sem cache para garantir versão mais recente
           aws s3 cp src/frontend/dist/index.html s3://${BUCKET}/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
 
@@ -99,7 +64,7 @@ jobs:
         run: |
           CF_ID="${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}"
           if [ -z "$CF_ID" ] || [ "$CF_ID" = "-" ] || [ "$CF_ID" = "none" ]; then
-            echo "::warning::CLOUDFRONT_DISTRIBUTION_ID não configurado ou é placeholder — invalidação ignorada."
+            echo "::warning::CLOUDFRONT_DISTRIBUTION_ID nao configurado — invalidacao ignorada."
             exit 0
           fi
           aws cloudfront create-invalidation \

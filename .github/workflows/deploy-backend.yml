@@ -1,23 +1,16 @@
 name: Deploy Backend Lambdas
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/backend/**'
-      - '.github/workflows/deploy-backend.yml'
-  workflow_dispatch:
-  # Acionado pela infra após deploy bem-sucedido (o dist compilado é lido pelo sam build da infra)
   workflow_run:
     workflows: ["Deploy Infrastructure"]
     types: [completed]
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    # Se acionado por workflow_run, só continua se a infra passou
-    if: ${{ github.event_name == 'push' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4.2.0
 
@@ -47,8 +40,3 @@ jobs:
         run: |
           cd src/backend
           npm run build
-
-  # Nota: o deploy das Lambdas é feito pela pipeline Deploy Infrastructure
-  # via sam build (CodeUri: ../backend/dist/) + sam deploy.
-  # Este job valida que o código compila corretamente antes de qualquer deploy.
-  # Manter separado evita conflito de changeset ao rodar infra e backend em paralelo.
