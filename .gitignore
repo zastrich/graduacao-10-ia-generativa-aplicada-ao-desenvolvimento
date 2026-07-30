@@ -3,6 +3,10 @@ node_modules
 src/video
 .env
 
+*.mp4
+
+carta-de-servicos-sjp-pr
+
 # Build outputs
 src/backend/dist
 src/frontend/dist
