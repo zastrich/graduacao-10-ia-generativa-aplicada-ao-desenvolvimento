@@ -69,6 +69,25 @@ Parameters:
       Para domínios *.example.com, use um certificado wildcard.
       Se vazio, custom domains não serão configurados.
 
+  # -------------------------------------------------------------------
+  # Retrain Configuration
+  # -------------------------------------------------------------------
+  RetrainBatchSize:
+    Type: Number
+    Default: 10
+    Description: Numero de links processados por batch durante o retreino.
+
+  RetrainParallel:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Se true, processa links em paralelo dentro de cada batch.
+
+  RetrainMaxConcurrency:
+    Type: Number
+    Default: 5
+    Description: Maximo de links processados simultaneamente quando paralelo esta habilitado.
+
 Conditions:
   # Verdadeiro quando AllowedOrigin ainda é o wildcard do primeiro deploy
   IsWildcardOrigin: !Equals [!Ref AllowedOrigin, '*']
@@ -100,6 +119,9 @@ Globals:
         CHUNKS_TABLE: !Ref ChunksTable
         BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_REGION: !Ref AWS::Region
+        RETRAIN_BATCH_SIZE: !Ref RetrainBatchSize
+        RETRAIN_PARALLEL: !Ref RetrainParallel
+        RETRAIN_MAX_CONCURRENCY: !Ref RetrainMaxConcurrency
         JWT_SECRET: !Ref JwtSecret
         # CORS: usa o parâmetro AllowedOrigin para evitar dependência circular
         # com FrontendDistribution. Atualize para o domínio CloudFront após 1º deploy.
@@ -543,6 +565,10 @@ Resources:
             TableName: !Ref ChunksTable
         - S3CrudPolicy:
             BucketName: !Ref KnowledgeBucket
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:copiloto-knowledge-bases-${Stage}
       Events:
         Create:
           Type: Api

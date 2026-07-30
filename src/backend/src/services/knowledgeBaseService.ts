@@ -205,67 +205,75 @@ export const knowledgeBaseService = {
     // 1. Fetch links e salva como chunks (com detecção de bloqueio por domínio)
     const updatedLinks = [...kb.links];
     const blockedDomains = new Set<string>();
+    const batchSize = parseInt(process.env.RETRAIN_BATCH_SIZE || '10', 10);
+    const isParallel = process.env.RETRAIN_PARALLEL === 'true';
+    const maxConcurrency = parseInt(process.env.RETRAIN_MAX_CONCURRENCY || '5', 10);
 
-    for (let i = 0; i < updatedLinks.length; i++) {
-      const link = updatedLinks[i];
+    // Processa links em batches
+    for (let batchStart = 0; batchStart < updatedLinks.length; batchStart += batchSize) {
+      const batch = updatedLinks.slice(batchStart, batchStart + batchSize);
+      const batchIndices = Array.from({ length: batch.length }, (_, i) => batchStart + i);
 
-      // Extrai domínio da URL
-      let domain: string;
-      try {
-        domain = new URL(link.url).hostname;
-      } catch {
-        updatedLinks[i] = { ...link, status: 'error', statusMessage: 'URL invalida' };
-        continue;
-      }
-
-      // Se o domínio já foi bloqueado, marca como skipped
-      if (blockedDomains.has(domain)) {
-        updatedLinks[i] = { ...link, status: 'skipped', statusMessage: `Dominio ${domain} bloqueado/timeout` };
-        continue;
-      }
-
-      try {
-        const response = await fetch(link.url, {
-          headers: { 'User-Agent': 'CopilotoCorporativo/1.0' },
-          signal: AbortSignal.timeout(10000),
-        });
-
-        if (response.ok) {
-          const contentType = response.headers.get('content-type') || '';
-          const body = await response.text();
-
-          let content: string;
-          if (contentType.includes('application/json')) {
-            content = body;
-          } else {
-            content = normalizeContent(body);
-          }
-
-          if (content.trim().length > 20) {
-            await dynamoService.put(CHUNKS_TABLE, {
-              knowledgeBaseId: kbId,
-              fileId: `link-${link.id}`,
-              fileName: link.url,
-              content,
-              parsedAt: new Date().toISOString(),
-            } as ParsedChunk);
-          }
-
-          updatedLinks[i] = { ...link, lastFetchedAt: new Date().toISOString(), status: 'success', statusMessage: undefined };
-        } else if (response.status === 403 || response.status === 429 || response.status === 503) {
-          // Bloqueado — marca domínio inteiro como bloqueado
-          blockedDomains.add(domain);
-          updatedLinks[i] = { ...link, status: 'error', statusMessage: `HTTP ${response.status} — dominio bloqueado` };
-          console.warn(`[Retrain] Dominio ${domain} bloqueado (HTTP ${response.status}). Pulando restante do dominio.`);
-        } else {
-          updatedLinks[i] = { ...link, status: 'error', statusMessage: `HTTP ${response.status}` };
+      const processLink = async (idx: number) => {
+        const link = updatedLinks[idx];
+        let domain: string;
+        try {
+          domain = new URL(link.url).hostname;
+        } catch {
+          updatedLinks[idx] = { ...link, status: 'error', statusMessage: 'URL invalida' };
+          return;
         }
-      } catch (err: any) {
-        // Timeout ou erro de rede — bloqueia o domínio
-        const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError' || err.message?.includes('timeout');
-        blockedDomains.add(domain);
-        updatedLinks[i] = { ...link, status: 'error', statusMessage: isTimeout ? 'Timeout' : (err.message || 'Erro de rede') };
-        console.warn(`[Retrain] Erro em ${domain}: ${err.message}. Pulando restante do dominio.`);
+
+        if (blockedDomains.has(domain)) {
+          updatedLinks[idx] = { ...link, status: 'skipped', statusMessage: `Dominio ${domain} bloqueado/timeout` };
+          return;
+        }
+
+        try {
+          const response = await fetch(link.url, {
+            headers: { 'User-Agent': 'CopilotoCorporativo/1.0' },
+            signal: AbortSignal.timeout(10000),
+          });
+
+          if (response.ok) {
+            const contentType = response.headers.get('content-type') || '';
+            const body = await response.text();
+            const content = contentType.includes('application/json') ? body : normalizeContent(body);
+
+            if (content.trim().length > 20) {
+              await dynamoService.put(CHUNKS_TABLE, {
+                knowledgeBaseId: kbId,
+                fileId: `link-${link.id}`,
+                fileName: link.url,
+                content,
+                parsedAt: new Date().toISOString(),
+              } as ParsedChunk);
+            }
+            updatedLinks[idx] = { ...link, lastFetchedAt: new Date().toISOString(), status: 'success', statusMessage: undefined };
+          } else if (response.status === 403 || response.status === 429 || response.status === 503) {
+            blockedDomains.add(domain);
+            updatedLinks[idx] = { ...link, status: 'error', statusMessage: `HTTP ${response.status} — dominio bloqueado` };
+          } else {
+            updatedLinks[idx] = { ...link, status: 'error', statusMessage: `HTTP ${response.status}` };
+          }
+        } catch (err: any) {
+          blockedDomains.add(domain);
+          const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
+          updatedLinks[idx] = { ...link, status: 'error', statusMessage: isTimeout ? 'Timeout' : (err.message || 'Erro de rede') };
+        }
+      };
+
+      if (isParallel) {
+        // Paralelo com concorrência limitada
+        for (let i = 0; i < batchIndices.length; i += maxConcurrency) {
+          const chunk = batchIndices.slice(i, i + maxConcurrency);
+          await Promise.allSettled(chunk.map(processLink));
+        }
+      } else {
+        // Sequencial
+        for (const idx of batchIndices) {
+          await processLink(idx);
+        }
       }
     }
 

@@ -68,4 +68,7 @@ jobs:
               HostedZoneId="${{ vars.HOSTED_ZONE_ID || '' }}" \
               WebDomain="${{ vars.WEB_URL || '' }}" \
               ApiDomain="${{ vars.API_URL || '' }}" \
-              CertificateArn="${{ secrets.CERTIFICATE_ARN || '' }}"
+              CertificateArn="${{ secrets.CERTIFICATE_ARN || '' }}" \
+              RetrainBatchSize=${{ vars.RETRAIN_BATCH_SIZE || '10' }} \
+              RetrainParallel=${{ vars.RETRAIN_PARALLEL || 'false' }} \
+              RetrainMaxConcurrency=${{ vars.RETRAIN_MAX_CONCURRENCY || '5' }}
