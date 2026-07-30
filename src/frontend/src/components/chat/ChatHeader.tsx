@@ -56,7 +56,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ knowledgeBase }) => {
         <Tooltip title="Arquivos e links processados como fontes de consulta">
           <Chip
             icon={<FolderIcon sx={{ fontSize: 16 }} />}
-            label={`${knowledgeBase.fileCount || 0} Fonte(s)`}
+            label={`${(knowledgeBase as any).sourceCount || knowledgeBase.fileCount || 0} Fonte(s)`}
             sx={{ backgroundColor: 'rgba(6, 182, 212, 0.15)', color: '#67E8F9', border: '1px solid rgba(6, 182, 212, 0.3)' }}
           />
         </Tooltip>

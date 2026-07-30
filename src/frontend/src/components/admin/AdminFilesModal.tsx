@@ -38,6 +38,7 @@ import {
   getFileDownloadUrl,
   addKnowledgeBaseLink,
   deleteKnowledgeBaseLink,
+  importSitemap,
   triggerRetrainKnowledgeBase,
 } from '../../api/client';
 import type { KnowledgeBase } from '../../types';
@@ -68,6 +69,8 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
   const [uploadQueue, setUploadQueue] = useState<FileUploadItem[]>([]);
   const [linkUrl, setLinkUrl] = useState('');
   const [addingLink, setAddingLink] = useState(false);
+  const [sitemapUrl, setSitemapUrl] = useState('');
+  const [importingSitemap, setImportingSitemap] = useState(false);
   const [retraining, setRetraining] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -158,6 +161,22 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
       onRefresh();
     } catch {
       setMsg({ type: 'error', text: 'Falha ao remover link.' });
+    }
+  };
+
+  const handleImportSitemap = async () => {
+    if (!sitemapUrl) return;
+    setImportingSitemap(true);
+    setMsg(null);
+    try {
+      const result = await importSitemap(knowledgeBase.id, sitemapUrl);
+      setMsg({ type: 'success', text: `Sitemap importado: ${result.added} links adicionados, ${result.skipped} duplicados ignorados.` });
+      setSitemapUrl('');
+      onRefresh();
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err.response?.data?.error || 'Falha ao importar sitemap.' });
+    } finally {
+      setImportingSitemap(false);
     }
   };
 
@@ -315,6 +334,29 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mb: 1 }}>
                 Links sao indexados ao retreinar a base. O conteudo HTML e automaticamente convertido em texto.
               </Typography>
+
+              {/* Sitemap import */}
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, p: 1.5, borderRadius: '8px', bgcolor: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)' }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="https://exemplo.com/sitemap.xml"
+                  value={sitemapUrl}
+                  onChange={(e) => setSitemapUrl(e.target.value)}
+                  label="Importar Sitemap"
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  onClick={handleImportSitemap}
+                  disabled={importingSitemap || !sitemapUrl}
+                  size="small"
+                  sx={{ minWidth: 100 }}
+                >
+                  {importingSitemap ? <CircularProgress size={18} /> : 'Importar'}
+                </Button>
+              </Box>
 
               {(!knowledgeBase.links || knowledgeBase.links.length === 0) ? (
                 <Typography variant="caption" sx={{ color: '#475569', fontStyle: 'italic' }}>Nenhum link configurado.</Typography>

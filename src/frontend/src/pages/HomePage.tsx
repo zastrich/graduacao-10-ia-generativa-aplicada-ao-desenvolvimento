@@ -143,7 +143,7 @@ export const HomePage: React.FC = () => {
                   <Chip
                     size="small"
                     icon={<FolderIcon sx={{ fontSize: 14 }} />}
-                    label={`${kb.fileCount || 0} Fonte(s)`}
+                    label={`${(kb as any).sourceCount || kb.fileCount || 0} Fonte(s)`}
                     color="primary"
                     variant="outlined"
                     sx={{ height: 24 }}

@@ -43,6 +43,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     // POST /admin/knowledge-bases/:id/links
+    if (event.httpMethod === 'POST' && path.includes('/sitemap')) {
+      return await importSitemap(kbId, event, origin);
+    }
+
     if (event.httpMethod === 'POST' && path.includes('/links')) {
       return await addLink(kbId, event, origin);
     }
@@ -150,4 +154,62 @@ async function deleteLink(kbId: string, event: APIGatewayProxyEvent, origin?: st
 
   await knowledgeBaseService.deleteLink(kbId, body.linkId);
   return noContent(origin);
+}
+
+async function importSitemap(kbId: string, event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
+  let body: { url?: string };
+  try {
+    body = JSON.parse(event.body || '{}');
+  } catch {
+    return badRequest('JSON invalido', origin);
+  }
+
+  if (!body.url) {
+    return badRequest('URL do sitemap e obrigatoria', origin);
+  }
+
+  try {
+    // Fetch the sitemap XML
+    const response = await fetch(body.url, {
+      headers: { 'User-Agent': 'CopilotoCorporativo/1.0' },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!response.ok) {
+      return badRequest(`Falha ao acessar sitemap: HTTP ${response.status}`, origin);
+    }
+
+    const xml = await response.text();
+
+    // Parse URLs from sitemap XML (handles both <url><loc> and <sitemap><loc>)
+    const urls: string[] = [];
+    const locRegex = /<loc>\s*(.*?)\s*<\/loc>/gi;
+    let match;
+    while ((match = locRegex.exec(xml)) !== null) {
+      const loc = match[1].trim();
+      if (loc.startsWith('http')) {
+        urls.push(loc);
+      }
+    }
+
+    if (urls.length === 0) {
+      return badRequest('Nenhuma URL encontrada no sitemap', origin);
+    }
+
+    // Add each URL as a link (skip duplicates)
+    const kb = await knowledgeBaseService.getById(kbId);
+    const existingUrls = new Set(kb.links.map((l) => l.url));
+    let added = 0;
+
+    for (const url of urls) {
+      if (!existingUrls.has(url)) {
+        await knowledgeBaseService.addLink(kbId, { url });
+        added++;
+      }
+    }
+
+    return success({ added, total: urls.length, skipped: urls.length - added }, 200, origin);
+  } catch (err: any) {
+    return badRequest(`Erro ao processar sitemap: ${err.message}`, origin);
+  }
 }

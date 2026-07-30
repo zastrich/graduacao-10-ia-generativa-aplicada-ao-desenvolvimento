@@ -222,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobile = false, mobileOpen = f
               </ListItemIcon>
               <ListItemText
                 primary={kb.name}
-                secondary={`${kb.fileCount} fonte(s)`}
+                secondary={`${(kb as any).sourceCount || kb.fileCount || 0} fonte(s)`}
                 slotProps={{
                   primary: { sx: { fontSize: '0.75rem', color: '#E2E8F0' }, noWrap: true },
                   secondary: { sx: { fontSize: '0.65rem', color: '#64748B' } },
