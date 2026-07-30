@@ -534,7 +534,8 @@ Resources:
       FunctionName: !Sub copiloto-knowledge-bases-${Stage}
       CodeUri: ../backend/dist/
       Handler: handlers/knowledgeBases.handler
-      Timeout: 60
+      Timeout: 300
+      MemorySize: 512
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref KnowledgeBasesTable

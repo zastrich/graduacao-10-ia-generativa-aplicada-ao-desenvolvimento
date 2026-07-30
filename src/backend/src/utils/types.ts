@@ -40,6 +40,8 @@ export interface KnowledgeBaseLink {
   id: string;
   url: string;
   lastFetchedAt: string | null;
+  status: 'pending' | 'success' | 'error' | 'skipped';
+  statusMessage?: string;
   createdAt: string;
 }
 
