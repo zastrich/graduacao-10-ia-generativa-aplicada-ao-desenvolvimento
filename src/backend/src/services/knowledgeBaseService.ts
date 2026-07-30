@@ -90,13 +90,27 @@ export const knowledgeBaseService = {
 
   async delete(id: string): Promise<void> {
     const kb = await this.getById(id);
-    // Remove pasta do S3
+    // Remove pasta do S3 (arquivos originais + context.txt)
     await s3Service.deleteFolder(`${kb.id}/`);
     // Remove todos os chunks parseados dessa base
     const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: id }) as ParsedChunk[];
     for (const chunk of chunks) {
       await dynamoService.delete(CHUNKS_TABLE, { knowledgeBaseId: id, fileId: chunk.fileId });
     }
+    // Remove conversas e mensagens associadas a essa base
+    const conversations = await dynamoService.query(
+      config.tables.conversations, { knowledgeBaseId: id }, 'knowledgeBase-index'
+    );
+    for (const conv of conversations) {
+      // Remove mensagens da conversa
+      const messages = await dynamoService.query(config.tables.messages, { conversationId: conv.id });
+      for (const msg of messages) {
+        await dynamoService.delete(config.tables.messages, { conversationId: conv.id, createdAt: msg.createdAt });
+      }
+      // Remove a conversa
+      await dynamoService.delete(config.tables.conversations, { id: conv.id });
+    }
+    // Remove a KB
     await dynamoService.delete(TABLE, { id });
   },
 
