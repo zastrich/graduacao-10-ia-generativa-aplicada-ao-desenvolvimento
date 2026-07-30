@@ -186,7 +186,13 @@ async function importSitemap(kbId: string, event: APIGatewayProxyEvent, origin?:
     const locRegex = /<loc>\s*(.*?)\s*<\/loc>/gi;
     let match;
     while ((match = locRegex.exec(xml)) !== null) {
-      const loc = match[1].trim();
+      // Decode XML entities (&amp; → &, &lt; → <, etc.)
+      const loc = match[1].trim()
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'");
       if (loc.startsWith('http')) {
         urls.push(loc);
       }
