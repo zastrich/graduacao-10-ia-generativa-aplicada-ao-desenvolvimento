@@ -563,6 +563,10 @@ Resources:
             TableName: !Ref KnowledgeBasesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ChunksTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConversationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MessagesTable
         - S3CrudPolicy:
             BucketName: !Ref KnowledgeBucket
         - Statement:
