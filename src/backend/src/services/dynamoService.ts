@@ -57,14 +57,23 @@ export const dynamoService = {
 
     const client = await getAWSClient();
     const keyName = Object.keys(keyCondition)[0];
-    const result = await client.send(new dynamoCommands.QueryCommand({
-      TableName: tableName,
-      IndexName: indexName,
-      KeyConditionExpression: `#key = :value`,
-      ExpressionAttributeNames: { '#key': keyName },
-      ExpressionAttributeValues: { ':value': keyCondition[keyName] },
-    }));
-    return result.Items || [];
+    const allItems: Record<string, any>[] = [];
+    let lastKey: any = undefined;
+
+    do {
+      const result = await client.send(new dynamoCommands.QueryCommand({
+        TableName: tableName,
+        IndexName: indexName,
+        KeyConditionExpression: `#key = :value`,
+        ExpressionAttributeNames: { '#key': keyName },
+        ExpressionAttributeValues: { ':value': keyCondition[keyName] },
+        ExclusiveStartKey: lastKey,
+      }));
+      allItems.push(...(result.Items || []));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return allItems;
   },
 
   async scan(tableName: string): Promise<Record<string, any>[]> {
@@ -73,10 +82,19 @@ export const dynamoService = {
     }
 
     const client = await getAWSClient();
-    const result = await client.send(new dynamoCommands.ScanCommand({
-      TableName: tableName,
-    }));
-    return result.Items || [];
+    const allItems: Record<string, any>[] = [];
+    let lastKey: any = undefined;
+
+    do {
+      const result = await client.send(new dynamoCommands.ScanCommand({
+        TableName: tableName,
+        ExclusiveStartKey: lastKey,
+      }));
+      allItems.push(...(result.Items || []));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return allItems;
   },
 
   async update(tableName: string, key: Record<string, string>, updates: Record<string, any>): Promise<Record<string, any> | undefined> {

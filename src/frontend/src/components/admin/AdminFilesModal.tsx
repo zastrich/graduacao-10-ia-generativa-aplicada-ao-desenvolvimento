@@ -102,10 +102,14 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
 
     setUploadQueue((prev) => [...prev, ...newItems]);
 
-    // Envia cada arquivo de forma independente (paralelo)
-    await Promise.allSettled(
-      newItems.map((item) => uploadSingleFile(item, knowledgeBase.id))
-    );
+    // Envia em batches de 3 para evitar throttling no S3/Lambda
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
+      const batch = newItems.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(
+        batch.map((item) => uploadSingleFile(item, knowledgeBase.id))
+      );
+    }
 
     onRefresh();
     e.target.value = '';
