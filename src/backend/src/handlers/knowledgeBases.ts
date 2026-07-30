@@ -24,7 +24,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     switch (event.httpMethod) {
       case 'POST':
         if (id && event.resource?.includes('/retrain')) {
-          return await retrain(id, origin);
+          return await retrain(id, event, origin);
         }
         return await createKnowledgeBase(event, origin);
 
@@ -103,7 +103,36 @@ async function deleteKnowledgeBase(id: string, origin?: string): Promise<APIGate
   return noContent(origin);
 }
 
-async function retrain(id: string, origin?: string): Promise<APIGatewayProxyResult> {
-  const kb = await knowledgeBaseService.retrain(id);
-  return success(kb, 200, origin);
+async function retrain(id: string, event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
+  // Se chamado com header X-Async-Retrain, processa inline (invocacao async da propria Lambda)
+  const isAsyncInvocation = event.headers?.['x-async-retrain'] === 'true';
+
+  if (isAsyncInvocation) {
+    // Processamento real — chamado via Lambda invoke async
+    const kb = await knowledgeBaseService.retrain(id);
+    return success(kb, 200, origin);
+  }
+
+  // Chamado via API Gateway — retorna imediatamente e dispara processamento async
+  const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (functionName) {
+    const { LambdaClient, InvokeCommand } = await import('@aws-sdk/client-lambda');
+    const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
+
+    const asyncEvent = {
+      ...event,
+      headers: { ...event.headers, 'x-async-retrain': 'true' },
+    };
+
+    await lambda.send(new InvokeCommand({
+      FunctionName: functionName,
+      InvocationType: 'Event', // Fire-and-forget
+      Payload: Buffer.from(JSON.stringify(asyncEvent)),
+    }));
+  } else {
+    // Fallback: executa inline (dev local)
+    await knowledgeBaseService.retrain(id);
+  }
+
+  return success({ message: 'Retreinamento iniciado. O processo pode levar alguns minutos dependendo da quantidade de links.' }, 202, origin);
 }
