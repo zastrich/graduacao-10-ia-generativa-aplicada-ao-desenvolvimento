@@ -37,6 +37,7 @@ import {
   deleteKnowledgeBaseFile,
   getFileDownloadUrl,
   addKnowledgeBaseLink,
+  deleteKnowledgeBaseLink,
   triggerRetrainKnowledgeBase,
 } from '../../api/client';
 import type { KnowledgeBase } from '../../types';
@@ -147,6 +148,16 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
       setMsg({ type: 'error', text: 'Falha ao adicionar link.' });
     } finally {
       setAddingLink(false);
+    }
+  };
+
+  const handleDeleteLink = async (linkId: string) => {
+    try {
+      await deleteKnowledgeBaseLink(knowledgeBase.id, linkId);
+      setMsg({ type: 'success', text: 'Link removido.' });
+      onRefresh();
+    } catch {
+      setMsg({ type: 'error', text: 'Falha ao remover link.' });
     }
   };
 
@@ -325,6 +336,9 @@ export const AdminFilesModal: React.FC<AdminFilesModalProps> = ({
                         </Typography>
                         <IconButton size="small" component="a" href={lnk.url} target="_blank" rel="noopener noreferrer" sx={{ color: '#64748B' }}>
                           <OpenIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteLink(lnk.id)} sx={{ color: '#EF4444' }} title="Excluir link">
+                          <DeleteIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                       </Box>
                       <Typography variant="caption" sx={{ color: '#64748B', pl: 3.5, fontSize: '0.65rem' }}>

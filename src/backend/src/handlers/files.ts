@@ -47,6 +47,11 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return await addLink(kbId, event, origin);
     }
 
+    // DELETE /admin/knowledge-bases/:id/links
+    if (event.httpMethod === 'DELETE' && path.includes('/links')) {
+      return await deleteLink(kbId, event, origin);
+    }
+
     return badRequest('Rota não encontrada', origin);
   } catch (err: any) {
     console.error('Files handler error:', err);
@@ -129,4 +134,20 @@ async function addLink(kbId: string, event: APIGatewayProxyEvent, origin?: strin
 
   const link = await knowledgeBaseService.addLink(kbId, body);
   return created(link, origin);
+}
+
+async function deleteLink(kbId: string, event: APIGatewayProxyEvent, origin?: string): Promise<APIGatewayProxyResult> {
+  let body: { linkId?: string };
+  try {
+    body = JSON.parse(event.body || '{}');
+  } catch {
+    return badRequest('JSON invalido', origin);
+  }
+
+  if (!body.linkId) {
+    return badRequest('linkId e obrigatorio', origin);
+  }
+
+  await knowledgeBaseService.deleteLink(kbId, body.linkId);
+  return noContent(origin);
 }

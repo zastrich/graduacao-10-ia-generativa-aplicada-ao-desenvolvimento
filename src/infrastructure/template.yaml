@@ -621,6 +621,12 @@ Resources:
             RestApiId: !Ref CopilotoApi
             Path: /admin/knowledge-bases/{id}/links
             Method: POST
+        DeleteLink:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/links
+            Method: DELETE
 
   # --- Chat / Inference ---
   ChatFunction:
