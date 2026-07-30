@@ -187,6 +187,17 @@ export const knowledgeBaseService = {
     return link;
   },
 
+  async deleteLink(kbId: string, linkId: string): Promise<void> {
+    const kb = await this.getById(kbId);
+    const updatedLinks = kb.links.filter((l) => l.id !== linkId);
+    await dynamoService.update(TABLE, { id: kbId }, {
+      links: updatedLinks,
+      updatedAt: new Date().toISOString(),
+    });
+    // Remove chunk associado ao link (se existir)
+    await dynamoService.delete(CHUNKS_TABLE, { knowledgeBaseId: kbId, fileId: `link-${linkId}` }).catch(() => {});
+  },
+
   async retrain(kbId: string): Promise<KnowledgeBase> {
     const kb = await this.getById(kbId);
 

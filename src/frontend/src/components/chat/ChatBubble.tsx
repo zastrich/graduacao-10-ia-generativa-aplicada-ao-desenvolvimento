@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Typography, Avatar, Paper } from '@mui/material';
 import { SmartToy as BotIcon, Person as UserIcon } from '@mui/icons-material';
+import ReactMarkdown from 'react-markdown';
 import type { Message } from '../../types';
 
 interface ChatBubbleProps {
@@ -56,20 +57,39 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, agentName }) =>
               : '1px solid rgba(255, 255, 255, 0.08)',
             boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
             backdropFilter: 'blur(8px)',
+            // Markdown styles
+            '& p': { margin: '0 0 0.5em 0', '&:last-child': { mb: 0 } },
+            '& ul, & ol': { pl: 2.5, my: 0.5 },
+            '& li': { mb: 0.3 },
+            '& strong': { color: '#F8FAFC' },
+            '& a': { color: '#67E8F9', textDecoration: 'underline', '&:hover': { color: '#A5F3FC' } },
+            '& code': { backgroundColor: 'rgba(255,255,255,0.1)', px: 0.5, borderRadius: '4px', fontSize: '0.85em' },
+            '& pre': { backgroundColor: 'rgba(0,0,0,0.3)', p: 1.5, borderRadius: '8px', overflow: 'auto', my: 1 },
+            '& pre code': { backgroundColor: 'transparent', p: 0 },
+            '& h1, & h2, & h3, & h4': { mt: 1, mb: 0.5, color: '#F8FAFC' },
+            '& blockquote': { borderLeft: '3px solid #7C3AED', pl: 1.5, ml: 0, color: '#94A3B8' },
           }}
         >
-          <Typography
-            variant="body1"
-            sx={{
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              color: '#F8FAFC',
-              fontSize: '0.95rem',
-              lineHeight: 1.6,
-            }}
-          >
-            {message.content}
-          </Typography>
+          {isUser ? (
+            <Typography
+              variant="body1"
+              sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#F8FAFC', fontSize: '0.95rem', lineHeight: 1.6 }}
+            >
+              {message.content}
+            </Typography>
+          ) : (
+            <Box sx={{ color: '#E2E8F0', fontSize: '0.95rem', lineHeight: 1.6, wordBreak: 'break-word' }}>
+              <ReactMarkdown
+                components={{
+                  a: ({ href, children }) => (
+                    <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+                  ),
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </Box>
+          )}
         </Paper>
       </Box>
     </Box>

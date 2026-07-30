@@ -182,6 +182,10 @@ export async function addKnowledgeBaseLink(
   return res.data;
 }
 
+export async function deleteKnowledgeBaseLink(kbId: string, linkId: string): Promise<void> {
+  await apiClient.delete(`/admin/knowledge-bases/${kbId}/links`, { data: { linkId } });
+}
+
 export async function triggerRetrainKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
   const res = await apiClient.post<KnowledgeBase>(`/admin/knowledge-bases/${kbId}/retrain`);
   return res.data;

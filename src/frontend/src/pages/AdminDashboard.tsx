@@ -275,7 +275,7 @@ export const AdminDashboard: React.FC = () => {
                       onClick={() => handleOpenFilesModal(kb)}
                       sx={{ textTransform: 'none', color: '#67E8F9' }}
                     >
-                      {kb.fileCount || 0} Arquivo(s)
+                      {kb.fileCount || 0} Arquivo(s) • {kb.links?.length || 0} Link(s)
                     </Button>
                   </TableCell>
                   <TableCell sx={{ color: '#94A3B8', fontSize: '0.85rem' }}>
