@@ -17,7 +17,9 @@ async function getAWSClient() {
     const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
     const docClient = await import('@aws-sdk/lib-dynamodb');
     const client = new DynamoDBClient({ region: config.aws.region });
-    dynamoDBClient = docClient.DynamoDBDocumentClient.from(client);
+    dynamoDBClient = docClient.DynamoDBDocumentClient.from(client, {
+      marshallOptions: { removeUndefinedValues: true },
+    });
     dynamoCommands = docClient;
   }
   return dynamoDBClient;

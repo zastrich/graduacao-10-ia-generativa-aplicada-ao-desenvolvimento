@@ -113,8 +113,15 @@ async function retrain(id: string, event: APIGatewayProxyEvent, origin?: string)
 
   if (isAsyncInvocation) {
     // Processamento real — chamado via Lambda invoke async
-    const kb = await knowledgeBaseService.retrain(id);
-    return success(kb, 200, origin);
+    try {
+      const kb = await knowledgeBaseService.retrain(id);
+      return success(kb, 200, origin);
+    } catch (err: any) {
+      // Se falhar, reseta o status para idle
+      await knowledgeBaseService.cancelRetrain(id);
+      console.error('[Retrain async] Erro:', err);
+      return error(err.message || 'Erro no retreinamento', 500, origin);
+    }
   }
 
   // Chamado via API Gateway — retorna imediatamente e dispara processamento async
