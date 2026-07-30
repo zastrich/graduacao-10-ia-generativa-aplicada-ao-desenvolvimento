@@ -186,6 +186,11 @@ export async function deleteKnowledgeBaseLink(kbId: string, linkId: string): Pro
   await apiClient.delete(`/admin/knowledge-bases/${kbId}/links`, { data: { linkId } });
 }
 
+export async function importSitemap(kbId: string, url: string): Promise<{ added: number; total: number; skipped: number }> {
+  const res = await apiClient.post(`/admin/knowledge-bases/${kbId}/sitemap`, { url });
+  return res.data as any;
+}
+
 export async function triggerRetrainKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
   const res = await apiClient.post<KnowledgeBase>(`/admin/knowledge-bases/${kbId}/retrain`);
   return res.data;
