@@ -38,6 +38,7 @@ export const knowledgeBaseService = {
       links: [],
       config: { ...DEFAULT_BEDROCK_CONFIG, ...(data.config || {}) },
       lastTrainedAt: null,
+      retrainStatus: 'idle',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -140,6 +141,7 @@ export const knowledgeBaseService = {
       type: contentType,
       size: fileContent.length,
       s3Key,
+      status: 'pending',
       uploadedAt: new Date().toISOString(),
     };
 
@@ -202,111 +204,107 @@ export const knowledgeBaseService = {
   async retrain(kbId: string): Promise<KnowledgeBase> {
     const kb = await this.getById(kbId);
 
-    // 1. Fetch links e salva como chunks (com detecção de bloqueio por domínio)
-    const updatedLinks = [...kb.links];
+    if (kb.retrainStatus === 'training') {
+      throw { statusCode: 409, message: 'Retreinamento ja em andamento.' };
+    }
+
+    // Set all to pending and mark training
+    const pendingFiles: KnowledgeBaseFile[] = kb.files.map((f) => ({ ...f, status: 'pending' as const, statusMessage: undefined }));
+    const pendingLinks: KnowledgeBaseLink[] = kb.links.map((l) => ({ ...l, status: 'pending' as const, statusMessage: undefined }));
+    const total = pendingFiles.length + pendingLinks.length;
+
+    await dynamoService.update(TABLE, { id: kbId }, {
+      retrainStatus: 'training', retrainProgress: { total, processed: 0, errors: 0 },
+      files: pendingFiles, links: pendingLinks, updatedAt: new Date().toISOString(),
+    });
+
+    const updatedFiles = [...pendingFiles];
+    const updatedLinks = [...pendingLinks];
     const blockedDomains = new Set<string>();
     const batchSize = parseInt(process.env.RETRAIN_BATCH_SIZE || '10', 10);
     const isParallel = process.env.RETRAIN_PARALLEL === 'true';
     const maxConcurrency = parseInt(process.env.RETRAIN_MAX_CONCURRENCY || '5', 10);
+    let processed = 0;
+    let errors = 0;
 
-    // Processa links em batches
+    const isCancelled = async () => (await dynamoService.get(TABLE, { id: kbId }))?.retrainStatus === 'cancelling';
+
+    // Process files
+    for (let i = 0; i < updatedFiles.length; i++) {
+      if (i % batchSize === 0 && i > 0 && await isCancelled()) {
+        for (let j = i; j < updatedFiles.length; j++) updatedFiles[j] = { ...updatedFiles[j], status: 'skipped' as any, statusMessage: 'Cancelado' };
+        break;
+      }
+      try {
+        const content = await s3Service.getObject(updatedFiles[i].s3Key);
+        if (content) {
+          const parsed = await parseFileContent(content, updatedFiles[i].name);
+          if (parsed && parsed.trim().length > 20) {
+            await dynamoService.put(CHUNKS_TABLE, { knowledgeBaseId: kbId, fileId: updatedFiles[i].id, fileName: updatedFiles[i].name, content: parsed, parsedAt: new Date().toISOString() } as ParsedChunk);
+          }
+        }
+        updatedFiles[i] = { ...updatedFiles[i], status: 'success', statusMessage: undefined };
+      } catch (err: any) {
+        updatedFiles[i] = { ...updatedFiles[i], status: 'error', statusMessage: err.message || 'Erro' }; errors++;
+      }
+      processed++;
+    }
+    await dynamoService.update(TABLE, { id: kbId }, { files: updatedFiles, retrainProgress: { total, processed, errors } });
+
+    // Process links in batches
     for (let batchStart = 0; batchStart < updatedLinks.length; batchStart += batchSize) {
-      const batch = updatedLinks.slice(batchStart, batchStart + batchSize);
-      const batchIndices = Array.from({ length: batch.length }, (_, i) => batchStart + i);
+      if (await isCancelled()) {
+        for (let j = batchStart; j < updatedLinks.length; j++) updatedLinks[j] = { ...updatedLinks[j], status: 'skipped' as any, statusMessage: 'Cancelado' };
+        break;
+      }
+      const indices = Array.from({ length: Math.min(batchSize, updatedLinks.length - batchStart) }, (_, i) => batchStart + i);
 
       const processLink = async (idx: number) => {
         const link = updatedLinks[idx];
         let domain: string;
-        try {
-          domain = new URL(link.url).hostname;
-        } catch {
-          updatedLinks[idx] = { ...link, status: 'error', statusMessage: 'URL invalida' };
-          return;
+        try { domain = new URL(link.url).hostname; } catch {
+          updatedLinks[idx] = { ...link, status: 'error', statusMessage: 'URL invalida' }; errors++; processed++; return;
         }
-
-        if (blockedDomains.has(domain)) {
-          updatedLinks[idx] = { ...link, status: 'skipped', statusMessage: `Dominio ${domain} bloqueado/timeout` };
-          return;
-        }
-
+        if (blockedDomains.has(domain)) { updatedLinks[idx] = { ...link, status: 'skipped', statusMessage: 'Dominio bloqueado' }; processed++; return; }
         try {
-          const response = await fetch(link.url, {
-            headers: { 'User-Agent': 'CopilotoCorporativo/1.0' },
-            signal: AbortSignal.timeout(10000),
-          });
-
-          if (response.ok) {
-            const contentType = response.headers.get('content-type') || '';
-            const body = await response.text();
-            const content = contentType.includes('application/json') ? body : normalizeContent(body);
-
-            if (content.trim().length > 20) {
-              await dynamoService.put(CHUNKS_TABLE, {
-                knowledgeBaseId: kbId,
-                fileId: `link-${link.id}`,
-                fileName: link.url,
-                content,
-                parsedAt: new Date().toISOString(),
-              } as ParsedChunk);
-            }
+          const res = await fetch(link.url, { headers: { 'User-Agent': 'CopilotoCorporativo/1.0' }, signal: AbortSignal.timeout(10000) });
+          if (res.ok) {
+            const ct = res.headers.get('content-type') || '';
+            const body = await res.text();
+            const content = ct.includes('application/json') ? body : normalizeContent(body);
+            if (content.trim().length > 20) await dynamoService.put(CHUNKS_TABLE, { knowledgeBaseId: kbId, fileId: `link-${link.id}`, fileName: link.url, content, parsedAt: new Date().toISOString() } as ParsedChunk);
             updatedLinks[idx] = { ...link, lastFetchedAt: new Date().toISOString(), status: 'success', statusMessage: undefined };
-          } else if (response.status === 403 || response.status === 429 || response.status === 503) {
-            blockedDomains.add(domain);
-            updatedLinks[idx] = { ...link, status: 'error', statusMessage: `HTTP ${response.status} — dominio bloqueado` };
-          } else {
-            updatedLinks[idx] = { ...link, status: 'error', statusMessage: `HTTP ${response.status}` };
-          }
+          } else if ([403, 429, 503].includes(res.status)) {
+            blockedDomains.add(domain); updatedLinks[idx] = { ...link, status: 'error', statusMessage: `HTTP ${res.status}` }; errors++;
+          } else { updatedLinks[idx] = { ...link, status: 'error', statusMessage: `HTTP ${res.status}` }; errors++; }
         } catch (err: any) {
-          blockedDomains.add(domain);
-          const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
-          updatedLinks[idx] = { ...link, status: 'error', statusMessage: isTimeout ? 'Timeout' : (err.message || 'Erro de rede') };
+          blockedDomains.add(domain); updatedLinks[idx] = { ...link, status: 'error', statusMessage: err.name === 'AbortError' ? 'Timeout' : 'Erro de rede' }; errors++;
         }
+        processed++;
       };
 
-      if (isParallel) {
-        // Paralelo com concorrência limitada
-        for (let i = 0; i < batchIndices.length; i += maxConcurrency) {
-          const chunk = batchIndices.slice(i, i + maxConcurrency);
-          await Promise.allSettled(chunk.map(processLink));
-        }
-      } else {
-        // Sequencial
-        for (const idx of batchIndices) {
-          await processLink(idx);
-        }
-      }
+      if (isParallel) { for (let i = 0; i < indices.length; i += maxConcurrency) await Promise.allSettled(indices.slice(i, i + maxConcurrency).map(processLink)); }
+      else { for (const idx of indices) await processLink(idx); }
+      await dynamoService.update(TABLE, { id: kbId }, { links: updatedLinks, retrainProgress: { total, processed, errors } });
     }
 
-    // Atualiza links com status
-    await dynamoService.update(TABLE, { id: kbId }, { links: updatedLinks });
-
-    // 2. Consolida todos os chunks em um único arquivo de contexto RAG no S3
+    // Consolidate context.txt
     const chunks = await dynamoService.query(CHUNKS_TABLE, { knowledgeBaseId: kbId }) as ParsedChunk[];
     const allContent: string[] = [];
-
     for (const chunk of chunks) {
-      if (chunk.content) {
-        const cleaned = normalizeContent(chunk.content);
-        if (cleaned.trim().length > 20) {
-          const label = chunk.fileName.startsWith('http') ? `[Link: ${chunk.fileName}]` : `[Fonte: ${chunk.fileName}]`;
-          allContent.push(`${label}\n${cleaned}`);
-        }
-      }
+      if (chunk.content) { const c = normalizeContent(chunk.content); if (c.trim().length > 20) allContent.push(`${chunk.fileName.startsWith('http') ? '[Link]' : '[Fonte]'}: ${chunk.fileName}\n${c}`); }
     }
-
-    const contextText = allContent.join('\n\n---\n\n');
-    const contextKey = `${kbId}/context.txt`;
-
-    await s3Service.putObject(contextKey, Buffer.from(contextText, 'utf-8'), 'text/plain');
-
-    console.log(`[KnowledgeBaseService] Retreinamento concluido: ${kb.name} (${kbId}) — ${allContent.length} fontes, ${contextText.length} chars`);
+    await s3Service.putObject(`${kbId}/context.txt`, Buffer.from(allContent.join('\n\n---\n\n'), 'utf-8'), 'text/plain');
 
     const updated = await dynamoService.update(TABLE, { id: kbId }, {
-      lastTrainedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      retrainStatus: 'idle', retrainProgress: { total, processed, errors },
+      lastTrainedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     });
-
     return updated as KnowledgeBase;
+  },
+
+  async cancelRetrain(kbId: string): Promise<void> {
+    await dynamoService.update(TABLE, { id: kbId }, { retrainStatus: 'cancelling', updatedAt: new Date().toISOString() });
   },
 
   /**

@@ -26,6 +26,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         if (id && event.resource?.includes('/retrain')) {
           return await retrain(id, event, origin);
         }
+        if (id && event.resource?.includes('/cancel-retrain')) {
+          await knowledgeBaseService.cancelRetrain(id);
+          return success({ message: 'Cancelamento solicitado.' }, 200, origin);
+        }
         return await createKnowledgeBase(event, origin);
 
       case 'GET':

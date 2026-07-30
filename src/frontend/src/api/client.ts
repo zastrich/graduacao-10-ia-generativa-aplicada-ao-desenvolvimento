@@ -191,9 +191,13 @@ export async function importSitemap(kbId: string, url: string): Promise<{ added:
   return res.data as any;
 }
 
-export async function triggerRetrainKnowledgeBase(kbId: string): Promise<KnowledgeBase> {
-  const res = await apiClient.post<KnowledgeBase>(`/admin/knowledge-bases/${kbId}/retrain`);
+export async function triggerRetrainKnowledgeBase(kbId: string): Promise<any> {
+  const res = await apiClient.post(`/admin/knowledge-bases/${kbId}/retrain`);
   return res.data;
+}
+
+export async function cancelRetrainKnowledgeBase(kbId: string): Promise<void> {
+  await apiClient.post(`/admin/knowledge-bases/${kbId}/cancel-retrain`);
 }
 
 export async function fetchAdminLogs(): Promise<Conversation[]> {

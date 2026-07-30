@@ -606,6 +606,12 @@ Resources:
             RestApiId: !Ref CopilotoApi
             Path: /admin/knowledge-bases/{id}/retrain
             Method: POST
+        CancelRetrain:
+          Type: Api
+          Properties:
+            RestApiId: !Ref CopilotoApi
+            Path: /admin/knowledge-bases/{id}/cancel-retrain
+            Method: POST
 
   # --- File Upload ---
   FileUploadFunction:
